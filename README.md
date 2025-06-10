@@ -7,6 +7,8 @@
 
 This project hosts a simple HTTP interface on an ESP8266 that controls a servo motor to open or close a curtain — designed to allow airflow for an exhaust fan. The web UI includes big friendly buttons and is fully LAN-local.
 
+![Html_Preview](https://github.com/DisasterofPuppets/OnlyFans.local/blob/main/html.png)
+
 ## Features
 
 - Hosted webpage at `http://onlyfans.local` *(or via static IP)*
