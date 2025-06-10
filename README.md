@@ -1,28 +1,40 @@
-# OnlyFans.local (Http webpage hosted via WiFi on an ESP2866, with buttons to control a servo)
-2025 http://DisasterOfPuppets.com
+# OnlyFans.local
 
-I couldn't resist the name since I am using this to open my curtain to allow my exhaust fan to vent :)
+**ESP8266 WiFi-controlled Servo Curtain Opener**  
+2025 · [http://DisasterOfPuppets.com](http://DisasterOfPuppets.com)
 
-Hardware Required
-=================
+> *"When you just wanna play with yourself."*
 
-1x ESP8266
-1x 100uf Capacitor
-1 x 2 Pin Female Connector terminal (Optional)
-1 x 3 Male Board Pins (Optional)
-2 x 15 Female Board Pins (If you don't want to solder your ESP to the breadboard
-Misc wiring, solder etc.
-1 x Servo of your choice, I used a MG966R
+This project hosts a simple HTTP interface on an ESP8266 that controls a servo motor to open or close a curtain — designed to allow airflow for an exhaust fan. The web UI includes big friendly buttons and is fully LAN-local.
 
-SETUP
-=====
+## Features
 
-1. Replace the ssid and password in the OnlyFansLocal.ino with your own, upload to ESP8266
-2. Change any of the Angles / add more buttons, go nuts.
-3. Profit
+- Hosted webpage at `http://onlyfans.local` *(or via static IP)*
+- Servo control via `/open` and `/close` endpoints
+- LED heartbeat every 20 minutes to indicate activity
+- Startup motion test to verify servo operation
+- Designed for easy drop-in use with Google Home or voice triggers
 
-WIRING
-======
+---
 
+## Hardware Required
 
-Enjoy :)
+| Item                              | Notes                                            |
+|-----------------------------------|--------------------------------------------------|
+| 1 × ESP8266 (NodeMCU or similar) | Hosts the web page and controls the servo       |
+| 1 × 100µF Capacitor               | Power smoothing for the servo                   |
+| 1 × 2-Pin Female Connector        | *Optional:* external power for the servo        |
+| 1 × 3-Pin Male Header             | *Optional:* clean servo connection              |
+| 2 × 15-Pin Female Headers         | *Optional:* socket the ESP instead of soldering |
+| 1 × Servo (e.g. MG996R)           | High-torque recommended for curtain pulling     |
+| Misc wiring & solder              | You know the drill                              |
+
+---
+
+## Setup
+
+1. Open `OnlyFansLocal.ino` in the Arduino IDE
+2. Update the following lines with your own Wi-Fi credentials:
+   ```cpp
+   const char* ssid = "YourSSID";
+   const char* password = "YourPassword";
