@@ -1,5 +1,5 @@
 # OnlyFans.local (Http webpage hosted via WiFi on an ESP2866, with buttons to control a servo)
-2025 DisasterOfPuppets.com
+2025 http://DisasterOfPuppets.com
 
 I couldn't resist the name since I am using this to open my curtain to allow my exhaust fan to vent :)
 
