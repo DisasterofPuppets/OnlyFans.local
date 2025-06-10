@@ -1,5 +1,6 @@
 // Window exhaust fan curtain control
 // Using ESP8266 NodeMCU ESP-12
+// 2025 http://DisasterOfPuppets.com
 
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
@@ -13,10 +14,10 @@ ESP8266WebServer server(80);
 Servo myServo;
 unsigned long lastAlive = 0;
 
-//*********************************************
-const char* ssid = "CHANGEME";
-const char* password = "CHANGEME";
-////*********************************************
+//**************CHANGE ME**************
+const char* ssid = "BANKACCOUNT";
+const char* password = "DETAILS";
+//*************************************
 
 
 // HTML page with big buttons
@@ -25,7 +26,7 @@ const char* htmlPage = R"rawliteral(
 <html>
 <head>
   <title>Onlyfans.Local</title>
-  <p style="font-style: italic; color: #666; margin-top: -10px;">When you just wanna play with yourself</p>
+ 
   <style>
     body { font-family: sans-serif; text-align: center; margin-top: 50px; }
     button {
@@ -41,7 +42,8 @@ const char* htmlPage = R"rawliteral(
   </style>
 </head>
 <body>
-  <h1>ESP8266 Curtain Controller</h1>
+  <h1>Onlyfans.Local</h1>
+  <p style="font-style: italic; color: #666; margin-top: -10px;">When you just wanna play with yourself</p>
   <button class="open" onclick="fetch('/open')">Open Curtain</button>
   <button class="close" onclick="fetch('/close')">Close Curtain</button>
 </body>
