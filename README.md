@@ -74,7 +74,8 @@ However, **Windows does NOT support mDNS out of the box**. You have two options:
 
 ### Option A: Use a static IP and edit your `hosts` file
 
-This avoids mDNS entirely and gives you reliable local access by name, without the need to install 'Bonjourrrrrrrrr Ya Cheese Eating Surrender Monkeys.' - Groundskeeper Willie
+This avoids mDNS entirely and gives you reliable local access by name, without the need to install 
+*'Bonjourrrrrrrrr Ya Cheese Eating Surrender Monkeys.' - Groundskeeper Willie*
 
 1. Find and open this file as Administrator:
    ```
