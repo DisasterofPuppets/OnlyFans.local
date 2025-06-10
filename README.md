@@ -1,4 +1,5 @@
 # OnlyFans.local
+![Certified Kevin-Proof](https://img.shields.io/badge/Certified-Kevin--Proof-brightgreen)
 
 **ESP8266 WiFi-controlled Servo Curtain Opener**  
 2025 · [http://DisasterOfPuppets.com](http://DisasterOfPuppets.com)
@@ -8,6 +9,21 @@
 This project hosts a simple HTTP interface on an ESP8266 that controls a servo motor to open or close a curtain — designed to allow airflow for an exhaust fan. The web UI includes big friendly buttons and is fully LAN-local.
 
 ![Html_Preview](https://github.com/DisasterofPuppets/OnlyFans.local/blob/main/html.png)
+
+## Table of Contents
+
+- [Features](#features)
+- [Hardware Required](#hardware-required)
+- [Setup](#setup)
+- [Wiring](#wiring)
+- [Behavior Summary](#behavior-summary)
+- [mDNS and Static Host Access](#mdns-and-static-host-access-refer-from-step-4)
+  - [Option A: Bonjour](#option-a-install-bonjour-apples-mdns-service)
+  - [Option B: Hosts File](#option-b-use-a-static-ip-and-edit-your-hosts-file)
+- [Known Limitations](#known-limitations)
+- [TODO (Future Ideas)](#todo-future-ideas)
+- [License](#license)
+- [Disclaimer](#disclaimer)
 
 ## Features
 
@@ -116,3 +132,24 @@ Make sure:
 - The **100µF cap** is as close as possible to the servo's power pins
 
 
+## License
+
+MIT-ish. Feel free to use, remix, laugh at, or deploy in your suspiciously well-ventilated server room.
+
+No warranty, no support hotline, and definitely no refunds if you short out your servo or emotionally scar your network admin.
+
+---
+
+## Disclaimer
+
+Use at your own risk.
+
+This project assumes you know what you're doing with power, servos, and microcontrollers.  
+We accept no responsibility for:
+
+- Fried boards  
+- Bent curtains  
+- Kevin’s unauthorized use of the curtain  
+- Network policies violated by naming your device `onlyfans.local` in a shared workplace
+
+You've been warned. And honestly? You knew what this was.
