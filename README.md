@@ -1,5 +1,8 @@
 # OnlyFans.local
 ![Certified Kevin-Proof](https://img.shields.io/badge/Certified-Kevin--Proof-brightgreen)
+![Curtain Status](https://img.shields.io/badge/Curtain-Open%20%2F%20Closed-lightgrey)
+![Servo Mood](https://img.shields.io/badge/Servo-Ready-blue)
+![OnlyFans.local](https://img.shields.io/badge/Access-Controlled-important)
 
 **ESP8266 WiFi-controlled Servo Curtain Opener**  
 2025 · [http://DisasterOfPuppets.com](http://DisasterOfPuppets.com)
