@@ -38,3 +38,32 @@ This project hosts a simple HTTP interface on an ESP8266 that controls a servo m
    ```cpp
    const char* ssid = "YourSSID";
    const char* password = "YourPassword";
+3. Upload the code to your ESP8266 board using the Arduino IDE
+4. Access the web UI:
+   - Open a browser and visit: `http://onlyfans.local`  
+     *(if your system supports mDNS — refer below for Windows caveats)*  
+   - Or go to the static IP: `http://192.168.1.19`  
+     *(set in the sketch — feel free to change it if Kevin steals that IP)*
+5. Use the big beautiful buttons to open and close your curtain
+6. Want to adjust angles, timing, or add more controls?  
+   Crack open `handleOpen()` and `handleClose()` and go nuts
+7. Want to call it something *other* than `onlyfans.local`?  
+   Like you would..nevertheless you can update this line in `setup()`:
+   ```cpp
+   if (MDNS.begin("onlyfans")) {
+
+## Wiring
+
+![Wiring Diagram](https://github.com/DisasterofPuppets/OnlyFans.local/blob/main/Wiring%20Diagram.png)
+
+| Connection       | Pin on ESP8266 | Notes                        |
+|------------------|----------------|------------------------------|
+| Servo Signal     | GPIO13 (D7)    | PWM pin for servo control    |
+| Servo Power      | External 5V    | Don't use ESP’s 3.3V rail    |
+| Servo GND        | GND            | Must be shared with ESP GND  |
+| Capacitor (100µF)| Across 5V + GND| Helps smooth inrush current  |
+
+Make sure:
+- The servo is powered directly from a **stable 5V supply**
+- **Ground is shared** between the ESP and servo supply
+- The **100µF cap** is as close as possible to the servo's power pins
