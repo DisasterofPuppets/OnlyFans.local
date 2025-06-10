@@ -48,9 +48,53 @@ This project hosts a simple HTTP interface on an ESP8266 that controls a servo m
 6. Want to adjust angles, timing, or add more controls?  
    Crack open `handleOpen()` and `handleClose()` and go nuts
 7. Want to call it something *other* than `onlyfans.local`?  
-   Like you would..nevertheless you can update this line in `setup()`:
+   Like you would... but hey, if you insist, just update this line in `setup()`:
    ```cpp
    if (MDNS.begin("onlyfans")) {
+   ```
+   Replace `"onlyfans"` with any lowercase name you want — for example, `"ventlord"`, `"curtainmaster"`, or `"definitelynotNSFW"`.  
+   Then you can access it via `http://yourname.local` on systems that support mDNS (or with the `hosts` file workaround below).
+
+---
+
+## mDNS and Static Host Access (Refer from Step 4)
+
+### Using mDNS (`.local` names)
+
+mDNS lets you access devices on your LAN by name, e.g. `onlyfans.local`.  
+The ESP8266 handles this internally via:
+
+```cpp
+MDNS.begin("onlyfans");
+```
+
+However, **Windows does NOT support mDNS out of the box**. You have two options:
+
+---
+
+### Option A: Use a static IP and edit your `hosts` file
+
+This avoids mDNS entirely and gives you reliable local access by name, without the need to install 'Bonjourrrrrrrrr Ya Cheese Eating Surrender Monkeys.' - Groundskeeper Willie
+
+1. Find and open this file as Administrator:
+   ```
+   C:\Windows\System32\drivers\etc\hosts
+   ```
+2. At the bottom, add a line like this:
+   ```
+   192.168.1.19    onlyfans.local    # Exhaust Fan Controller
+   ```
+3. Save the file
+4. You can now access your ESP8266 via `http://onlyfans.local` on that machine
+
+### Option B: Install Bonjour (Apple's mDNS service)
+
+1. Download: [Bonjour Print Services for Windows](https://support.apple.com/kb/DL999)
+2. Install it
+3. Reboot (or restart your network stack)
+4. Then you should be able to open:  
+   `http://onlyfans.local` in your browser
+
 
 ## Wiring
 
@@ -67,3 +111,5 @@ Make sure:
 - The servo is powered directly from a **stable 5V supply**
 - **Ground is shared** between the ESP and servo supply
 - The **100µF cap** is as close as possible to the servo's power pins
+
+
