@@ -156,3 +156,7 @@ We accept no responsibility for:
 - Network policies violated by naming your device `onlyfans.local` in a shared workplace
 
 You've been warned. And honestly? You knew what this was.
+
+## Currently working on
+
+Better looking html page, fancy and all that
