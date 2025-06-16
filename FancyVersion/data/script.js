@@ -57,8 +57,7 @@ function startFanSpeedLoop() {
   loop();
 }
 
-function restartESP() {
-  const btn = event.currentTarget;
+function restartESP(btn) {
   const label = btn.querySelector('.btn-label');
   const loader = btn.querySelector('.loader');
 
@@ -74,18 +73,12 @@ function restartESP() {
 
   fetch('/restart')
     .then(() => {
-      if (label) {
-        label.textContent = 'Restarting...';
-      } else {
-        btn.textContent = 'Restarting...';
-      }
+      if (label) label.textContent = 'Restarting...';
+      else btn.textContent = 'Restarting...';
     })
     .catch(() => {
-      if (label) {
-        label.textContent = 'Failed to restart';
-      } else {
-        btn.textContent = 'Restart failed';
-      }
+      if (label) label.textContent = 'Failed to restart';
+      else btn.textContent = 'Restart failed';
     })
     .finally(() => {
       setTimeout(() => {
@@ -102,7 +95,6 @@ function restartESP() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-  // Start the fan speed loop
   setTimeout(() => {
     if (!hasStartedFan) {
       startFanSpeedLoop();
@@ -110,7 +102,6 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   }, 3000);
 
-  // Set up hold-to-restart button
   const restartBtn = document.getElementById('restart-btn');
   let holdTimer, triggered = false;
 
@@ -119,8 +110,8 @@ window.addEventListener('DOMContentLoaded', () => {
     restartBtn.classList.add('holding');
     holdTimer = setTimeout(() => {
       triggered = true;
-      restartESP();
-    }, 2000);
+      restartESP(restartBtn);
+    }, 1200);
   });
 
   restartBtn.addEventListener('mouseup', cancelHold);
