@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ESP Log Viewer</title>
+  <meta charset="UTF-8">
+  <style>
+    html, body {
+      height: 100%;
+    }
+
+    body {
+      font-family: monospace;
+      background: #000;
+      color: #0f0;
+      padding: 1rem;
+      margin: 0;
+      white-space: pre-wrap;
+      overflow-x: hidden;
+      animation: screenFlicker 0.8s ease-out;
+      display: flex;
+      flex-direction: column;
+	  
+	  body, .crt-title, #log, .cursor {
+		font-family: 'Courier New', Consolas, 'Lucida Console', monospace;
+	}
+    
+    #main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+	.log-controls {
+	  display: flex;
+	  justify-content: center;
+	  align-items: center;
+	  gap: 20px;
+	  width: 100%;
+	  margin: 2rem auto;
+	  padding: 0 1rem;
+	  box-sizing: border-box;
+	}
+
+	.log-btn {
+	  padding: 20px 50px; /* slightly larger */
+	  border: 2px solid #0f0;
+	  background-color: rgba(0, 0, 0, 0.85);
+	  color: #0f0;
+	  font-size: 1.2em;
+	  font-family: monospace;
+	  border-radius: 999px;
+	  cursor: pointer;
+	  transition: background-color 0.2s ease, transform 0.2s ease;
+	}
+
+	.log-btn:hover {
+	  background-color: rgba(0, 255, 0, 0.15);
+	  transform: scale(1.05);
+	}
+
+
+	.btn-load {
+	  padding: 16px 40px;
+	  border: 2px solid #0f0;
+	  background-color: rgba(0, 0, 0, 0.85);
+	  color: #0f0;
+	  font-size: 1.2em;
+	  font-family: monospace;
+	  border-radius: 12px;
+	  cursor: pointer;
+	  transition: background-color 0.2s ease, transform 0.2s ease;
+	}
+
+	.btn-load:hover {
+	  background-color: rgba(0, 255, 0, 0.15);
+	  transform: scale(1.05);
+	}
+
+	.loader-wrapper {
+	  display: none;
+	}
+
+	.loader {
+	  display: inline-block;
+	  width: 1em;
+	  height: 1em;
+	  border: 2px solid #0f0;
+	  border-top: 2px solid transparent;
+	  border-radius: 50%;
+	  animation: spin 0.6s linear infinite;
+	}
+
+	@keyframes spin {
+	  100% { transform: rotate(360deg); }
+	}
+
+
+
+	.title-wrapper {
+	  display: flex;
+	  justify-content: center;
+	  width: 100%;
+	  margin-bottom: 2rem; /* optional spacing below the title */
+	}
+
+	.crt-title {
+	  font-family: monospace;
+	  color: #0f0;
+	  font-size: 0.75em;
+	  white-space: pre;
+	  text-align: left;
+	  line-height: 1.2;
+	  margin: 0;
+	}
+
+
+    #log {
+      padding: 0 20px;
+      flex-grow: 1;
+      width: 100%;
+      text-align: left;
+      display: block;
+      overflow-y: auto;
+    }
+
+    .log-line {
+      display: inline;
+    }
+
+    .cursor {
+      display: inline-block;
+      width: 1ch;
+      color: #0f0;
+      font-weight: bold;
+    }
+
+    #home-btn {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 16px 40px;
+      border: 2px solid #0f0;
+      background-color: rgba(0, 0, 0, 0.85);
+      color: #0f0;
+      font-size: 1.2em;
+      font-family: monospace;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: background-color 0.2s ease, transform 0.2s ease;
+    }
+
+
+    #home-btn:hover {
+      background-color: rgba(0, 255, 0, 0.15);
+      transform: translateX(-50%) scale(1.05);
+    }
+
+    @keyframes flicker {
+      0%, 19%, 21%, 23%, 25%, 100% {
+        opacity: 1;
+      }
+      20%, 22%, 24% {
+        opacity: 0.3;
+      }
+    }
+
+    @keyframes screenFlicker {
+      0%   { background-color: #0f0; opacity: 0.9; }
+      40%  { background-color: #000; opacity: 0.2; }
+      70%  { background-color: #030; opacity: 0.6; }
+      100% { background-color: #000; opacity: 1; }
+    }
+
+    @keyframes crtJitter {
+      0%   { transform: translateY(0px); }
+      100% { transform: translateY(1.2px); }
+    }
+	
+  </style>
+
+  <script>
+    const cursorStates = ['_', ' ', '█', ' '];
+    let cursorIndex = 0;
+
+    function escapeHTML(str) {
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    function fetchLog() {
+      fetch('/log')
+        .then(r => r.text())
+        .then(text => {
+          const logEl = document.getElementById('log');
+          const lines = text.split('\n');
+
+          const escapedLines = lines.map(escapeHTML);
+          const lastLine = escapedLines.pop() || '';
+
+          logEl.innerHTML = escapedLines.join('<br>') +
+                            '<br><span class="log-line">' + lastLine +
+                            '<span class="cursor">_</span></span>';
+
+          logEl.scrollTop = logEl.scrollHeight;
+        });
+    }
+
+    setInterval(() => {
+      const liveCursor = document.querySelector('.cursor');
+      if (liveCursor) {
+        liveCursor.textContent = cursorStates[cursorIndex];
+        cursorIndex = (cursorIndex + 1) % cursorStates.length;
+      }
+    }, 300);
+
+    setInterval(fetchLog, 2000);
+    window.onload = fetchLog;
+	
+	
+	  function sendCurtainCommand(route) {
+    fetch(route)
+      .then(() => console.log(`${route} command sent.`))
+      .catch(() => console.error(`Failed to send ${route}`));
+  }
+  
+	  let curtainCooldown = false;
+
+	function sendCurtainCommand(endpoint) {
+	  if (curtainCooldown) return;
+	  curtainCooldown = true;
+
+	  fetch(endpoint)
+		.finally(() => {
+		  setTimeout(() => {
+			curtainCooldown = false;
+		  }, 1500); // 1.5 second cooldown
+		});
+	}
+
+  
+	
+  </script>
+</head>
+<body>
+
+  <div id="main">
+	<div class="title-wrapper">
+		<pre class="crt-title">
+░▒▓██████▓▒░  ░▒▓███████▓▒░  ░▒▓█▓▒░        ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓████████▓▒░  ░▒▓██████▓▒░  ░▒▓███████▓▒░   ░▒▓███████▓▒░          ░▒▓█▓▒░         ░▒▓██████▓▒░   ░▒▓██████▓▒░   ░▒▓██████▓▒░  ░▒▓█▓▒░        
+░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░        ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░        ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░                 ░▒▓█▓▒░        ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░        
+░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░        ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░        ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░                 ░▒▓█▓▒░        ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░        ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░        
+░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░         ░▒▓██████▓▒░  ░▒▓██████▓▒░   ░▒▓████████▓▒░ ░▒▓█▓▒░░▒▓█▓▒░  ░▒▓██████▓▒░           ░▒▓█▓▒░        ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░        ░▒▓████████▓▒░ ░▒▓█▓▒░        
+░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░           ░▒▓█▓▒░     ░▒▓█▓▒░        ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░        ░▒▓█▓▒░          ░▒▓█▓▒░        ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░        ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░        
+░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░           ░▒▓█▓▒░     ░▒▓█▓▒░        ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓██▓▒░ ░▒▓█▓▒░        ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░        
+ ░▒▓██████▓▒░  ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓████████▓▒░    ░▒▓█▓▒░     ░▒▓█▓▒░        ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓███████▓▒░  ░▒▓██▓▒░ ░▒▓████████▓▒░  ░▒▓██████▓▒░   ░▒▓██████▓▒░  ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓████████▓▒░
+		</pre>
+	</div>
+		
+	<div class="log-controls">
+		<button class="log-btn" onclick="sendCurtainCommand('/open')">Open Curtain</button>
+		<button class="log-btn" onclick="sendCurtainCommand('/close')">Close Curtain</button>
+	</div>
+		
+	   
+	<div id="log">Loading log...</div>
+  </div>
+
+  <button id="home-btn" onclick="window.location.href='./index.html'">Home</button>
+
+</body>
+</html>

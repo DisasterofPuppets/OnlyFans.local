@@ -102,9 +102,38 @@ function restartESP() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  // Start the fan speed loop
   setTimeout(() => {
     if (!hasStartedFan) {
-      startFanSpeedLoop(); hasStartedFan = true;
+      startFanSpeedLoop();
+      hasStartedFan = true;
     }
   }, 3000);
+
+  // Set up hold-to-restart button
+  const restartBtn = document.getElementById('restart-btn');
+  let holdTimer, triggered = false;
+
+  restartBtn.addEventListener('mousedown', () => {
+    triggered = false;
+    restartBtn.classList.add('holding');
+    holdTimer = setTimeout(() => {
+      triggered = true;
+      restartESP();
+    }, 2000);
+  });
+
+  restartBtn.addEventListener('mouseup', cancelHold);
+  restartBtn.addEventListener('mouseleave', cancelHold);
+  restartBtn.addEventListener('touchend', cancelHold);
+  restartBtn.addEventListener('touchcancel', cancelHold);
+
+  function cancelHold() {
+    clearTimeout(holdTimer);
+    restartBtn.classList.remove('holding');
+    if (!triggered) {
+      const fillBar = restartBtn.querySelector('.fill-bar');
+      if (fillBar) fillBar.style.width = '0%';
+    }
+  }
 });
