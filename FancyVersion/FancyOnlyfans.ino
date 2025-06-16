@@ -10,57 +10,22 @@
 
 #define SERVO_PIN 13           // D7 GPIO13 — safe for servo PWM
 #define LED_PIN LED_BUILTIN    // GPIO2 — onboard blue LED
+#define LOG_BUFFER_SIZE 2048
+String logBuffer = "";
 
 ESP8266WebServer server(80);
 Servo myServo;
 unsigned long lastAlive = 0;
 
 //**************CHANGE ME**************
-const char* ssid = "YOURBANK";
-const char* password = "DETAILSHERE";
+const char* ssid = "YourBank";
+const char* password = "DetailsHere";
 //*************************************
-
-// Routes
-void handleRoot() {
-  Serial.println("HTTP connection detected");
-  File file = LittleFS.open("/index.html", "r");
-  if (!file) {
-    server.send(500, "text/plain", "Missing index.html");
-    return;
-  }
-  server.streamFile(file, "text/html");
-  file.close();
-}
-
-void handleOpen() {
-  Serial.println("Opening curtain...");
-  myServo.attach(SERVO_PIN);
-  myServo.write(180);
-  delay(1000);
-  myServo.detach();
-  server.send(200, "text/plain", "Curtain opened.");
-}
-
-void handleClose() {
-  Serial.println("Closing curtain...");
-  myServo.attach(SERVO_PIN);
-  myServo.write(0);
-  delay(1000);
-  myServo.detach();
-  server.send(200, "text/plain", "Curtain closed.");
-}
-
-void handleRestart() {
-  Serial.println("Restarting ESP...");
-  server.send(200, "text/plain", "Restarting ESP...");
-  delay(500);
-  ESP.restart();
-}
 
 void setup() {
   Serial.begin(115200);
   delay(100);
-  Serial.println("\nBooting...");
+  Log("\nBooting...");
 
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, HIGH); // OFF (active LOW)
@@ -73,71 +38,126 @@ void setup() {
   WiFi.config(local_IP, gateway, subnet, dns);
 
   WiFi.begin(ssid, password);
-  Serial.print("Connecting to Wi-Fi");
+  Log("Connecting to Wi-Fi");
 
   // Blink LED while connecting
   while (WiFi.status() != WL_CONNECTED) {
-    Serial.print(".");
+    Log(".");
     digitalWrite(LED_PIN, LOW);
     delay(250);
     digitalWrite(LED_PIN, HIGH);
     delay(250);
   }
 
-  Serial.println("\nWi-Fi connected!");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+  Log("\nWi-Fi connected!");
+  Log("IP address: ");
+  Log(WiFi.localIP().toString()); // ✅ Now it's a String
   digitalWrite(LED_PIN, HIGH); // OFF
 
   // mDNS setup
   if (MDNS.begin("onlyfans")) {
-    Serial.println("mDNS responder started");
-    Serial.println("Try visiting: http://onlyfans.local");
+    Log("mDNS responder started");
+    Log("Try visiting: http://onlyfans.local");
   } else {
-    Serial.println("mDNS setup failed");
+    Log("mDNS setup failed");
   }
 
   // LittleFS setup
   if (!LittleFS.begin()) {
-    Serial.println("❌ LittleFS mount failed!");
+    Log("❌ LittleFS mount failed!");
     return;
   }
 
   // Confirm required files exist
-  if (!LittleFS.exists("/index.html")) Serial.println("❌ Missing: index.html");
-  if (!LittleFS.exists("/style.css"))   Serial.println("❌ Missing: style.css");
-  if (!LittleFS.exists("/script.js"))   Serial.println("❌ Missing: script.js");
-  if (!LittleFS.exists("/FanLogo.svg")) Serial.println("❌ Missing: FanLogo.svg");
+  if (!LittleFS.exists("/index.html")) Log("❌ Missing: index.html");
+  if (!LittleFS.exists("/style.css"))   Log("❌ Missing: style.css");
+  if (!LittleFS.exists("/script.js"))   Log("❌ Missing: script.js");
+  if (!LittleFS.exists("/fanlogo.svg")) Log("❌ Missing: fanlogo.svg");
+  if (!LittleFS.exists("/log.html")) Log("❌ Missing: log.html");
 
   // File routes
   server.on("/", handleRoot);
   server.serveStatic("/style.css",   LittleFS, "/style.css");
   server.serveStatic("/script.js",   LittleFS, "/script.js");
-  server.serveStatic("/FanLogo.svg", LittleFS, "/FanLogo.svg");
+  server.serveStatic("/fanlogo.svg", LittleFS, "/fanlogo.svg");
+  server.serveStatic("/log.html", LittleFS, "/log.html");
   server.serveStatic("/curtain.png", LittleFS, "/curtain.png"); // optional
 
   // Action routes
   server.on("/open", handleOpen);
   server.on("/close", handleClose);
   server.on("/restart", handleRestart);
+  server.on("/log", []() {
+    server.send(200, "text/plain", logBuffer);
+  });
 
   server.begin();
-  Serial.println("HTTP server started");
+  Log("HTTP server started");
 
   // Startup movement
-  Serial.println("Attaching servo...");
+  Log("Attaching servo...");
   myServo.attach(SERVO_PIN);
   myServo.write(0);
-  Serial.println("Moved to 0°");
+  Log("Moved to 0°");
   delay(1000);
 
   myServo.write(180);
-  Serial.println("Moved to 180°");
+  Log("Moved to 180°");
   delay(10000);
 
   myServo.detach();
-  Serial.println("PWM detached");
+  Log("PWM detached");
 }
+
+//******************FUNCTIONS **********************
+
+void Log(const String& msg) {
+  Serial.println(msg); // still prints over USB if connected
+  logBuffer += msg + "\n";
+  if (logBuffer.length() > LOG_BUFFER_SIZE) {
+    logBuffer = logBuffer.substring(logBuffer.length() - LOG_BUFFER_SIZE); // trim oldest
+  }
+}
+
+// Routes
+void handleRoot() {
+  Log("HTTP connection detected");
+  File file = LittleFS.open("/index.html", "r");
+  if (!file) {
+    server.send(500, "text/plain", "Missing index.html");
+    return;
+  }
+  server.streamFile(file, "text/html");
+  file.close();
+}
+
+void handleOpen() {
+  Log("Opening curtain...");
+  myServo.attach(SERVO_PIN);
+  myServo.write(180);
+  delay(1000);
+  myServo.detach();
+  server.send(200, "text/plain", "Curtain opened.");
+}
+
+void handleClose() {
+  Log("Closing curtain...");
+  myServo.attach(SERVO_PIN);
+  myServo.write(0);
+  delay(1000);
+  myServo.detach();
+  server.send(200, "text/plain", "Curtain closed.");
+}
+
+void handleRestart() {
+  Log("Restarting ESP...");
+  server.send(200, "text/plain", "Restarting ESP...");
+  delay(500);
+  ESP.restart();
+}
+
+
+
 
 void loop() {
   MDNS.update();
@@ -145,7 +165,7 @@ void loop() {
 
   unsigned long now = millis();
   if (now - lastAlive >= 20UL * 60UL * 1000UL) {  // 20 minutes
-    Serial.println("[DEBUG] Keep-alive blink");
+    Log("[DEBUG] Keep-alive blink");
     digitalWrite(LED_PIN, LOW);   // ON
     delay(100);                   // short blink
     digitalWrite(LED_PIN, HIGH);  // OFF
