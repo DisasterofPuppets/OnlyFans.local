@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Onlyfans.Local</title>
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="/script.js"></script>
+</head>
+<body>
+  <div class="curtain left" id="curtain-left"></div>
+  <div class="curtain right" id="curtain-right"></div>
+
+  <div class="main-content">
+    <div class="logo-row">
+      <div class="fan-wrapper">
+        <img id="fan" src="/FanLogo.svg" alt="Fan Logo" class="fan-icon">
+      </div>
+      <div class="logo-text">OnlyFans.Local</div>
+    </div>
+
+    <button class="btn-load" onclick="toggleCurtain(this)">
+      <span class="btn-label">Close Curtain</span>
+      <span class="loader-wrapper">
+        <span class="loader"></span>
+      </span>
+    </button>
+	<button class="btn-load" onclick="restartESP()">
+	  <span class="btn-label">Restart Server</span>
+	  <span class="loader-wrapper">
+		<span class="loader"></span>
+	  </span>
+	</button>
+  </div>
+
+  <div class="footer">
+    <a href="http://disasterofpuppets.com" target="_blank">Disaster's YouTube Channel</a> |
+    <a href="https://github.com/DisasterofPuppets/OnlyFans.local" target="_blank">Disaster's GitHub</a>
+  </div>
+</body>
+</html>
