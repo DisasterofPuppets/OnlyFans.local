@@ -1,1 +1,0 @@
-fancy html verion, but requires more config and ESP9266 LittleFileSystem install
