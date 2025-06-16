@@ -1,1 +1,4 @@
-fancy html verion, but requires more config and ESP9266 LittleFileSystem install
+Oh you found the Fancy html version, 
+This requires a little more config along with ESP9266 LittleFileSystem install, but it' pretty simple
+Custom animations, Serial log via Wifi.
+Far too much time spent working on this when it was just a simple on off button trigger.
