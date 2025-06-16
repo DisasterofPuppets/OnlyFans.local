@@ -18,8 +18,8 @@ Servo myServo;
 unsigned long lastAlive = 0;
 
 //**************CHANGE ME**************
-const char* ssid = "SLOWKEVIN";
-const char* password = "FUKevin07";
+const char* ssid = "YourBank";
+const char* password = "DetailsHere";
 //*************************************
 
 void setup() {
