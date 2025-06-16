@@ -62,28 +62,44 @@ function restartESP() {
   const label = btn.querySelector('.btn-label');
   const loader = btn.querySelector('.loader');
 
-  btn.classList.add('loading');
-  label.style.display = 'none';
-  loader.style.display = 'inline-block';
-  btn.disabled = true;
+  if (label && loader) {
+    btn.classList.add('loading');
+    label.style.display = 'none';
+    loader.style.display = 'inline-block';
+    btn.disabled = true;
+  } else {
+    btn.textContent = 'Restarting...';
+    btn.disabled = true;
+  }
 
   fetch('/restart')
     .then(() => {
-      label.textContent = 'Restarting...';
+      if (label) {
+        label.textContent = 'Restarting...';
+      } else {
+        btn.textContent = 'Restarting...';
+      }
     })
     .catch(() => {
-      label.textContent = 'Failed to restart';
+      if (label) {
+        label.textContent = 'Failed to restart';
+      } else {
+        btn.textContent = 'Restart failed';
+      }
     })
     .finally(() => {
       setTimeout(() => {
-        btn.classList.remove('loading');
-        loader.style.display = 'none';
-        label.style.display = 'inline';
+        if (label && loader) {
+          btn.classList.remove('loading');
+          loader.style.display = 'none';
+          label.style.display = 'inline';
+        } else {
+          btn.textContent = 'Restart';
+        }
         btn.disabled = false;
-      }, 5000); // Allow reboot time
+      }, 5000);
     });
 }
-
 
 window.addEventListener('DOMContentLoaded', () => {
   setTimeout(() => {
