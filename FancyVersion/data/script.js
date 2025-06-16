@@ -1,6 +1,36 @@
 const testMode = false;
 let isOpen = true, hasStartedFan = false;
 
+let curtainCooldown = false;
+
+function sendCurtainCommand(path) {
+  if (curtainCooldown) return;
+  curtainCooldown = true;
+
+  const btn = event.currentTarget;
+  const label = btn.querySelector('.btn-label');
+  const loader = btn.querySelector('.loader');
+
+  btn.classList.add('loading');
+  label.style.display = 'none';
+  loader.style.display = 'inline-block';
+  btn.disabled = true;
+
+  fetch(path)
+    .catch(() => {
+      console.warn("Curtain command failed:", path);
+    })
+    .finally(() => {
+      setTimeout(() => {
+        curtainCooldown = false;
+        btn.classList.remove('loading');
+        loader.style.display = 'none';
+        label.style.display = 'inline';
+        btn.disabled = false;
+      }, 500); // debounce time
+    });
+}
+
 function toggleCurtain(btn) {
   const label = btn.querySelector('.btn-label'),
         loader = btn.querySelector('.loader'),
