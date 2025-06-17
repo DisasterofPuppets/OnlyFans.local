@@ -22,6 +22,9 @@ const char* ssid = "YourBank";
 const char* password = "DetailsHere";
 //*************************************
 
+bool isOpen = false;
+bool isMoving = false;
+
 void setup() {
   Serial.begin(115200);
   delay(100);
@@ -86,6 +89,17 @@ void setup() {
   server.serveStatic("/index.html", LittleFS, "/index.html");
 
   // Action routes
+server.on("/curtain-status", []() {
+  String state;
+  if (isMoving) {
+    state = "moving";
+  } else if (isOpen) {
+    state = "open";
+  } else {
+    state = "closed";
+  }
+  server.send(200, "application/json", "{\"state\":\"" + state + "\"}");
+});
   server.on("/open", handleOpen);
   server.on("/close", handleClose);
   server.on("/restart", handleRestart);
@@ -99,13 +113,18 @@ void setup() {
   // Startup movement
   Log("Attaching servo...");
   myServo.attach(SERVO_PIN);
+  isMoving = true;
   myServo.write(0);
   Log("Moved to 0°");
   delay(1000);
 
+  isMoving = true;
   myServo.write(180);
   Log("Moved to 180°");
   delay(10000);
+
+  isOpen = true;  // final position is open
+  isMoving = false;
 
   myServo.detach();
   Log("PWM detached");
@@ -136,18 +155,24 @@ void handleRoot() {
 void handleOpen() {
   Log("Curtain Open");
   myServo.attach(SERVO_PIN);
+  isMoving = true;
   myServo.write(180);
   delay(1000);
   myServo.detach();
+  isMoving = false;
+  isOpen = true;
   server.send(200, "text/plain", "Curtain opened.");
 }
 
 void handleClose() {
   Log("Curtain Closed");
   myServo.attach(SERVO_PIN);
+  isMoving = true;
   myServo.write(0);
   delay(1000);
   myServo.detach();
+  isMoving = false;
+  isOpen = false;
   server.send(200, "text/plain", "Curtain closed.");
 }
 
