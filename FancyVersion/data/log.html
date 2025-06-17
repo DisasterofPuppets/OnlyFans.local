@@ -95,12 +95,20 @@
 	}
 
 	#log {
+	  display: flex;
+	  justify-content: center;
+	  align-items: flex-start;
+	  padding: 10px;
 	  flex-grow: 1;
 	  width: 100%;
 	  overflow-y: auto;
 	  overflow-x: hidden;
 	  box-sizing: border-box;
-	  padding: 10px;
+	}
+	
+	#log-content {
+	  max-width: 600px;  /* Adjust this as needed for visual centering */
+	  width: 100%;
 	  text-align: left;
 	}
 
@@ -240,7 +248,7 @@
 	  fetch('/log')
 		.then(r => r.text())
 		.then(text => {
-		  const logEl = document.getElementById('log');
+		  const logEl = document.getElementById('log-content');
 		  const lines = text.split('\n');
 		  const escapedLines = lines.map(escapeHTML);
 		  const lastLine = escapedLines.pop() || '';
@@ -292,7 +300,7 @@ function fetchCurtainState() {
       <button id="close-btn" class="btn-load" onclick="sendCurtainCommand('/close')">Close Curtain</button>
     </div>
 
-    <div id="log">Loading log...</div>
+    <div id="log"><div id="log-content">Loading log...</div></div>
   </div>
 
   <a href="/index.html" id="home-btn">Home</a>
