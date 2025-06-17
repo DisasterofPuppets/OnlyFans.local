@@ -137,6 +137,22 @@ function restartESP(btn) {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  // Disable curtain button + show loading state
+  const curtainBtn = document.getElementById('curtain-toggle-btn');
+  if (curtainBtn) {
+    curtainBtn.disabled = true;
+    const label = curtainBtn.querySelector('.btn-label');
+    if (label) label.textContent = 'Loading...';
+  }
+
+  fetchCurtainState(); // Fetch initial curtain state from ESP
+
+  // Re-enable button shortly after load
+  setTimeout(() => {
+    if (curtainBtn) curtainBtn.disabled = false;
+  }, 1000);
+
+  // Your existing fan startup logic
   setTimeout(() => {
     if (!hasStartedFan) {
       startFanSpeedLoop();
@@ -144,8 +160,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   }, 3000);
 
-  fetchCurtainState(); // Fetch initial curtain state from ESP
-
+  // Your existing restart button logic
   const restartBtn = document.getElementById('restart-btn');
   let holdTimer, triggered = false;
 
@@ -174,3 +189,4 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   }
 });
+
