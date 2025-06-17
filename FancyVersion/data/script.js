@@ -1,37 +1,12 @@
 const testMode = false;
-let isOpen = true, hasStartedFan = false;
-
+let isOpen = null;
+let hasStartedFan = false;
 let curtainCooldown = false;
 
-function sendCurtainCommand(path) {
-  if (curtainCooldown) return;
+function toggleCurtain(btn) {
+  if (curtainCooldown || isOpen === null) return; // Prevent double-press before state known
   curtainCooldown = true;
 
-  const btn = event.currentTarget;
-  const label = btn.querySelector('.btn-label');
-  const loader = btn.querySelector('.loader');
-
-  btn.classList.add('loading');
-  label.style.display = 'none';
-  loader.style.display = 'inline-block';
-  btn.disabled = true;
-
-  fetch(path)
-    .catch(() => {
-      console.warn("Curtain command failed:", path);
-    })
-    .finally(() => {
-      setTimeout(() => {
-        curtainCooldown = false;
-        btn.classList.remove('loading');
-        loader.style.display = 'none';
-        label.style.display = 'inline';
-        btn.disabled = false;
-      }, 500); // debounce time
-    });
-}
-
-function toggleCurtain(btn) {
   const label = btn.querySelector('.btn-label'),
         loader = btn.querySelector('.loader'),
         fan = document.getElementById('fan'),
@@ -39,27 +14,27 @@ function toggleCurtain(btn) {
         curtainR = document.getElementById('curtain-right');
 
   btn.classList.add('loading');
-  label.style.display = 'none';
-  loader.style.display = 'inline-block';
+  if (label) label.style.display = 'none';
+  if (loader) loader.style.display = 'inline-block';
   btn.disabled = true;
 
   const target = isOpen ? '/close' : '/open';
 
   function completeCurtainToggle() {
     isOpen = !isOpen;
-    label.textContent = isOpen ? 'Close Curtain' : 'Open Curtain';
+    updateCurtainButtonText();
     fan.classList.remove('fan-error');
     curtainL.classList.toggle('closed', !isOpen);
     curtainR.classList.toggle('closed', !isOpen);
-    loader.style.display = 'none';
-    label.style.display = 'inline';
+    if (loader) loader.style.display = 'none';
+    if (label) label.style.display = 'inline';
     btn.classList.remove('loading');
-    label.style.visibility = 'visible';
     btn.disabled = false;
+    curtainCooldown = false;
   }
 
   if (testMode) {
-    setTimeout(completeCurtainToggle, 1000);
+    setTimeout(completeCurtainToggle, 3000);
   } else {
     fetch(target)
       .catch(() => {
@@ -67,9 +42,40 @@ function toggleCurtain(btn) {
         fan.classList.add('fan-error');
       })
       .finally(() => {
-        completeCurtainToggle();
+        setTimeout(completeCurtainToggle, 3000);
       });
   }
+}
+
+function updateCurtainButtonText() {
+  const curtainBtn = document.getElementById('curtain-toggle-btn');
+  if (!curtainBtn || isOpen === null) return;  // skip early
+  const label = curtainBtn.querySelector('.btn-label');
+  if (label) {
+    label.textContent = isOpen ? 'Close Curtain' : 'Open Curtain';
+  }
+}
+
+function fetchCurtainState() {
+  fetch('/curtain-status')
+    .then(r => r.json())
+    .then(data => {
+      if (data && data.state) {
+        isOpen = data.state === 'open';
+        updateCurtainButtonText();
+
+        // Match visual curtain state
+        const curtainL = document.getElementById('curtain-left');
+        const curtainR = document.getElementById('curtain-right');
+        if (curtainL && curtainR) {
+          curtainL.classList.toggle('closed', !isOpen);
+          curtainR.classList.toggle('closed', !isOpen);
+        }
+      }
+    })
+    .catch(() => {
+      console.warn('Failed to fetch curtain state.');
+    });
 }
 
 function startFanSpeedLoop() {
@@ -103,12 +109,18 @@ function restartESP(btn) {
 
   fetch('/restart')
     .then(() => {
-      if (label) label.textContent = 'Restarting...';
-      else btn.textContent = 'Restarting...';
+      if (label) {
+        label.textContent = 'Restarting...';
+      } else {
+        btn.textContent = 'Restarting...';
+      }
     })
     .catch(() => {
-      if (label) label.textContent = 'Failed to restart';
-      else btn.textContent = 'Restart failed';
+      if (label) {
+        label.textContent = 'Failed to restart';
+      } else {
+        btn.textContent = 'Restart failed';
+      }
     })
     .finally(() => {
       setTimeout(() => {
@@ -132,29 +144,33 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   }, 3000);
 
+  fetchCurtainState(); // Fetch initial curtain state from ESP
+
   const restartBtn = document.getElementById('restart-btn');
   let holdTimer, triggered = false;
 
-  restartBtn.addEventListener('mousedown', () => {
-    triggered = false;
-    restartBtn.classList.add('holding');
-    holdTimer = setTimeout(() => {
-      triggered = true;
-      restartESP(restartBtn);
-    }, 1200);
-  });
+  if (restartBtn) {
+    restartBtn.addEventListener('mousedown', () => {
+      triggered = false;
+      restartBtn.classList.add('holding');
+      holdTimer = setTimeout(() => {
+        triggered = true;
+        restartESP(restartBtn);
+      }, 2000);
+    });
 
-  restartBtn.addEventListener('mouseup', cancelHold);
-  restartBtn.addEventListener('mouseleave', cancelHold);
-  restartBtn.addEventListener('touchend', cancelHold);
-  restartBtn.addEventListener('touchcancel', cancelHold);
+    restartBtn.addEventListener('mouseup', cancelHold);
+    restartBtn.addEventListener('mouseleave', cancelHold);
+    restartBtn.addEventListener('touchend', cancelHold);
+    restartBtn.addEventListener('touchcancel', cancelHold);
 
-  function cancelHold() {
-    clearTimeout(holdTimer);
-    restartBtn.classList.remove('holding');
-    if (!triggered) {
-      const fillBar = restartBtn.querySelector('.fill-bar');
-      if (fillBar) fillBar.style.width = '0%';
+    function cancelHold() {
+      clearTimeout(holdTimer);
+      restartBtn.classList.remove('holding');
+      if (!triggered) {
+        const fillBar = restartBtn.querySelector('.fill-bar');
+        if (fillBar) fillBar.style.width = '0%';
+      }
     }
   }
 });
