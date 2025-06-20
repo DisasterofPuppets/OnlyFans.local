@@ -144,6 +144,15 @@ No warranty, no support hotline, and definitely no refunds if you short out your
 
 ---
 
+## Servo Servomin / Servomax fine tuning
+These define the minimum and maximum pulse widths sent to the servo, in microseconds.
+
+Most standard servos expect a signal between ~600 µs (fully one direction) 
+and ~2400 µs (fully the other). These values directly affect how far the servo turns.
+
+You can calibrate these for your specific servo model by slowly adjusting the numbers 
+and observing how far it turns (or if it buzzes or hits mechanical limits).
+
 ## Disclaimer
 
 Use at your own risk.
