@@ -14,6 +14,7 @@
 #include <user_interface.h>
 #define LOG_BUFFER_SIZE 2048
 
+// Structure stored in RTC memory to remember the curtain state across resets
 struct RTCData {
   uint32_t magic;
   bool lastWasOpen;
@@ -22,6 +23,7 @@ struct RTCData {
 RTCData rtcData;
 uint32_t RTC_MEM_START = 65;
 
+// Runtime flags and state
 bool skipStartupMovement = false;
 String logBuffer = "";
 bool isOpen = false;
@@ -31,11 +33,14 @@ unsigned long lastAlive = 0;
 //**************ADJUST THESE SETTINGS FOR YOUR SETUP **************
 
 // -= WIFI SETTINGS =-
+
 // Wi-Fi credentials (replace with your network details)
+
 const char* ssid = "YOUR_BANK";
 const char* password = "DETAILS_HERE";
 
-// -= SERVO SETTINGS =-
+// -= SERVO SETTINGS =-  (adjust to match your hardware)
+
 #define SERVO_PIN 13           // D7 GPIO13 — safe for servo PWM
 #define LED_PIN LED_BUILTIN    // GPIO2 — onboard blue LED
 constexpr int SERVOMIN = 600;  // Min pulse width in µs. DO NOT modify unless calibrating manually.
@@ -49,7 +54,9 @@ constexpr bool OPEN_ON_RUN = true; // Have the Servo open the curtain on power (
 #define STEP_US 40          // Microsecond step size for interpolation
 #define STEP_DELAY 2        // Delay in milliseconds between steps
 
-// -= SERVER SETTINGS =-
+
+// -= SERVER SETTINGS =-  (network configuration for the HTTP server)
+
 IPAddress local_IP(192, 168, 1, 19); // Change this to the IP address you want to use for the server
 IPAddress gateway(192, 168, 1, 1); // Your router's gateway
 IPAddress subnet(255, 255, 255, 0); 
@@ -62,17 +69,20 @@ ESP8266WebServer server(80);
 Servo myServo;
 int currentPulse = 0; // tracks last pulse sent to the servo
 
-// Function prototypes
+// Helper function declarations so setup() can call them
+//  - angleToMicros converts a target angle to its pulse width
+//  - moveServoSmooth incrementally moves the servo to that angle
 int angleToMicros(int angle);
 void moveServoSmooth(int targetAngle);
 
 void setup() {
-  
+
   Serial.begin(115200);
 
-//reads the system memory states
+  // Restore saved state from RTC memory so the servo doesn't jump after resets
   system_rtc_mem_read(RTC_MEM_START, &rtcData, sizeof(rtcData));
-  
+
+  // Was the previous reset triggered by our restart handler?
   if (rtcData.magic == 0xCAFEBABE) {
     skipStartupMovement = true;
     isOpen = rtcData.lastWasOpen;
@@ -99,6 +109,7 @@ if (USE_DNS) {
   WiFi.config(local_IP, gateway, subnet);
 }
   
+  // Connect to Wi-Fi and blink the LED until connected
   WiFi.begin(ssid, password);
   Serial.print("Connecting to Wi-Fi");
 
@@ -116,7 +127,7 @@ if (USE_DNS) {
   Log(WiFi.localIP().toString()); // ✅ Now it's a String
   digitalWrite(LED_PIN, HIGH); // OFF
 
-  // mDNS setup
+  // Start mDNS responder so "onlyfans.local" resolves to this device
   if (MDNS.begin("onlyfans")) {
     Log("mDNS responder started");
     Log("Try visiting: http://onlyfans.local");
@@ -124,7 +135,7 @@ if (USE_DNS) {
     Log("mDNS setup failed");
   }
 
-  // LittleFS setup
+  // Mount LittleFS and confirm all required web assets exist
   if (!LittleFS.begin()) {
     Log("❌ LittleFS mount failed!");
     return;
@@ -138,7 +149,7 @@ if (USE_DNS) {
   if (!LittleFS.exists("/log.html")) Log("❌ Missing: log.html");
   if (!LittleFS.exists("/curtain.png")) Log("❌ Missing: curtain.png");
 
-  // File routes
+  // Serve static files for the web interface
   server.on("/", handleRoot);
   server.serveStatic("/style.css",   LittleFS, "/style.css");
   server.serveStatic("/script.js",   LittleFS, "/script.js");
@@ -147,7 +158,7 @@ if (USE_DNS) {
   server.serveStatic("/curtain.png", LittleFS, "/curtain.png"); // optional
   server.serveStatic("/index.html", LittleFS, "/index.html");
 
-  // Action routes
+  // Endpoints that control the curtain and expose status/logs
   server.on("/curtain-status", []() {
   String state;
   if (isMoving) {
@@ -165,10 +176,11 @@ if (USE_DNS) {
   server.on("/log", []() {
     server.send(200, "text/plain", logBuffer);});
 
+  // Start listening for HTTP requests
   server.begin();
   Log("HTTP server started");
 
-  // Startup movement only runs if the server is not hard reset
+  // Optionally move the curtain on boot if this wasn't a software restart
   if (!skipStartupMovement) {
     Log("Running servo startup routines....");
     if (OPEN_ON_RUN == true) { // Check the user defined option
@@ -182,6 +194,8 @@ if (USE_DNS) {
 
 //******************FUNCTIONS **********************
 
+// Append a message to the log and keep the buffer within limits
+
 void Log(const String& msg) {
   Serial.println(msg); // still prints over USB if connected
   logBuffer += msg + "\n";
@@ -190,6 +204,7 @@ void Log(const String& msg) {
   }
 }
 
+// Reconnect if Wi-Fi drops
 void CheckWiFi() {
   if (WiFi.status() != WL_CONNECTED) {
     Log("[WiFi] Disconnected. Attempting reconnect...");
@@ -211,7 +226,7 @@ void CheckWiFi() {
   }
 }
 
-// Smoothly move the servo to a target angle using STEP_US and STEP_DELAY
+// Interpolate servo position in microsecond steps for smooth motion
 void moveServoSmooth(int targetAngle) {
   int targetPulse = angleToMicros(targetAngle);
   if (targetPulse == currentPulse) return;
@@ -228,7 +243,9 @@ void moveServoSmooth(int targetAngle) {
   }
 }
 
-// Routes
+// -------- HTTP route handlers --------
+
+// Serve the main interface page
 void handleRoot() {
   IPAddress clientIP = server.client().remoteIP();
   Log("HTTP connection detected from: " + clientIP.toString());
@@ -242,6 +259,7 @@ void handleRoot() {
   file.close();
 }
 
+// Move the curtain to the open position
 void handleOpen() {
   Log("Curtain Open");
   myServo.attach(SERVO_PIN, SERVOMIN, SERVOMAX);
@@ -255,6 +273,7 @@ void handleOpen() {
   server.send(200, "text/plain", "Curtain opened.");
 }
 
+// Move the curtain to the closed position
 void handleClose() {
   Log("Curtain Closed");
   myServo.attach(SERVO_PIN, SERVOMIN, SERVOMAX);
@@ -268,6 +287,7 @@ void handleClose() {
   server.send(200, "text/plain", "Curtain closed.");
 }
 
+// Persist state and reboot the ESP
 void handleRestart() {
   Log("Restarting Server...");
 
@@ -280,6 +300,7 @@ void handleRestart() {
   ESP.restart();
 }
 
+// Initial servo homing cycle executed on power-up
 void RunStartupMovement() {
   Serial.println("Initialising...");  // Display init message to serial
 
@@ -303,11 +324,12 @@ void RunStartupMovement() {
 }
 
 
-//Converts from Angle to Microseconds
+// Helper to convert an angle (0-180°) into the corresponding pulse width
 int angleToMicros(int angle) {
   return map(angle, 0, 180, SERVOMIN, SERVOMAX);
 }
 
+// Main runtime loop
 void loop() {
   MDNS.update();
   server.handleClient();
