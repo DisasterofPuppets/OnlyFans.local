@@ -49,10 +49,6 @@ constexpr bool OPEN_ON_RUN = true; // Have the Servo open the curtain on power (
 #define STEP_US 40          // Microsecond step size for interpolation
 #define STEP_DELAY 2        // Delay in milliseconds between steps
 
-// Function prototypes
-int angleToMicros(int angle);
-void moveServoSmooth(int targetAngle);
-
 // -= SERVER SETTINGS =-
 IPAddress local_IP(192, 168, 1, 19); // Change this to the IP address you want to use for the server
 IPAddress gateway(192, 168, 1, 1); // Your router's gateway
@@ -65,6 +61,10 @@ constexpr bool USE_DNS = false; // true : On | false : Off
 ESP8266WebServer server(80);
 Servo myServo;
 int currentPulse = 0; // tracks last pulse sent to the servo
+
+// Function prototypes
+int angleToMicros(int angle);
+void moveServoSmooth(int targetAngle);
 
 void setup() {
   
