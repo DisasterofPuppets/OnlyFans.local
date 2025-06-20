@@ -301,7 +301,7 @@
       liveCursor.textContent = cursorStates[cursorIndex];
       cursorIndex = (cursorIndex + 1) % cursorStates.length;
     }
-  }, 120);
+  }, 60); //cursorStates = ['_', ' ', '█', ' '], so the full blink cycle is:4 × 60ms = 240ms
 
   setInterval(fetchLog, 500);
 
