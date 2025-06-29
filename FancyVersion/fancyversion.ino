@@ -36,8 +36,8 @@ unsigned long lastAlive = 0;
 
 // Wi-Fi credentials (replace with your network details)
 
-const char* ssid = "YOUR_BANK";
-const char* password = "DETAILS_HERE";
+const char* ssid = "YOURBANK";
+const char* password = "DETAILSHERE";
 
 // -= SERVO SETTINGS =-  (adjust to match your hardware)
 
