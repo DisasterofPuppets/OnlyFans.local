@@ -142,7 +142,7 @@ Before connecting the ESP, stepper motor, or powering anything — **you MUST co
   <img src="https://raw.githubusercontent.com/DisasterofPuppets/OnlyFans.local/main/ReadmeImages/TMC2208pins.png" alt="TMC2208 Pin Reference" width="400"/>
 </div>
 
-HPosition the board with the **label side facing up** (text upright and readable), just like shown above.  
+Position the board with the **label side facing up** (text upright and readable), just like shown above.  
 This is the official orientation used by FYSETC and most major TMC2208-compatible breakout boards.
 
 - The **left column** contains motor and power pins (GND → VM)
