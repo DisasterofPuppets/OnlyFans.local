@@ -1,63 +1,5 @@
-// currently returning incorrect values.
+//works, but values are wrong and UART fails
 
-
-/*
-User connected. Initializing system...
-23:08:38.577 -> -----------------------------------------------------
-23:08:38.577 -> 
-23:08:38.577 -> Stepper UART control started.
-23:08:38.577 -> Enter 'Open', 'Close', 'Kill, 'Config', or '?' and press Enter.
-23:08:38.577 -> Enter '?' to see these instructions again or for more information
-23:08:38.577 -> Enter 'KILL' to Stop all function Immediately
-23:08:38.577 -> -----------------------------------------------------
-23:08:38.577 -> 
-23:08:38.670 -> Setting RMS Current to 1200mA...
-23:08:38.811 -> Setting Microsteps...
-23:08:38.905 -> Enabling SpreadCycle...
-23:08:38.999 -> ENABLE INTERPOLATION...
-23:08:39.092 -> PWM AUTOSCALE...
-23:08:39.186 -> PWM AUTOGRAD...
-23:08:39.326 -> PWM FREQUENCY...
-23:08:39.419 -> HOLD CURRENT MULTIPLIER...
-23:08:39.513 -> RUN_CURRENT_MULTIPLIER...
-23:08:39.607 -> HOLD_DELAY...
-23:08:39.699 -> I_scale_analog...
-23:08:39.839 -> internal_Rsense...
-23:08:39.932 -> 
-23:08:39.932 -> --- Reading back applied settings ---
-23:08:39.932 -> Applied RMS Current (mA): 1915
-23:08:39.932 -> Applied Microsteps: 256
-23:08:39.932 -> SpreadCycle enabled: 0
-23:08:39.978 -> Interpolation enabled: 0
-23:08:39.978 -> PWM Autoscale enabled: 0
-23:08:40.024 -> PWM Autograd enabled: 0
-23:08:40.024 -> PWM Frequency: 0
-23:08:40.024 -> Hold Current Multiplier (ihold): 16
-23:08:40.024 -> Run Current Multiplier (irun): 31
-23:08:40.070 -> Hold Delay (iholddelay): 10
-23:08:40.070 -> I_scale_analog: 0
-23:08:40.070 -> internal_Rsense: 0
-23:08:40.070 -> 
-23:08:40.070 -> System ready. Motor is idle, waiting for command entry.
-23:08:40.070 -> _
-23:08:43.946 -> -----------------------------------------------------
-23:08:43.946 -> Querying TMC2208 for Actual Driver Settings
-23:08:43.946 -> =============================================
-23:08:43.946 -> TMC2208 UART communication: OK
-23:08:43.946 -> RMS Current: 1915 mA
-23:08:43.993 -> Microstep Input Set To: 1/4 -> Actual Driver Resolution: 1/256
-23:08:43.993 -> Mode: StealthChop (Quiet)
-23:08:43.993 -> Interpolation to 1/256: Disabled
-23:08:44.040 -> PWM Autoscale: Disabled
-23:08:44.040 -> PWM Autograd: Disabled
-23:08:44.086 -> PWM Frequency: 0
-23:08:44.086 -> Hold Current Multiplier: 16
-23:08:44.086 -> Run Current Multiplier: 31
-23:08:44.086 -> Hold Delay: 10
-
-
-
-/*
 
 #include <SoftwareSerial.h>      // ESPSoftwareSerial v8.1.0 by Dirk Kaar and Peter Lerup
 #include <TMCStepper.h>
@@ -82,7 +24,8 @@ ESP8266 (NodeMCU)    | TMC2208 Driver    | NEMA17 Stepper    | Switches/Power
 D3 (GPIO0)           | STEP              | -                 | -
 D4 (GPIO2)           | DIR               | -                 | -
 D7 (GPIO13)          | EN                | -                 | -
-D1 & D2 (see notes)  | PDN_UART          | -                 | ** UART Connection **
+D1 (GPIO5)           | UART (Driver TX)  | -                 | -
+D2 (GPIO4)           | UART (Driver RX)  | -                 | - 
 D5 (GPIO14)          | -                 | -                 | Open Switch (Pin 1)
 D6 (GPIO12)          | -                 | -                 | Closed Switch (Pin 1)
 3V3                  | VDD               | -                 | -
@@ -91,10 +34,23 @@ GND                  | -                 | -                 | Closed Switch (Pi
 -                    | VM                | -                 | 12-24V Power Supply (+)
 -                    | GND               | -                 | 12-24V Power Supply (-)
 
-** UART Connection Details: **
-1. Connect D2 to one leg of the Resistor
-2. Connect PDN_UART from the TMC to the other side of the resistor
-3. Connect D1 directly to the PDN_UART Pin
+// ** UART Connection Details: **
+// 1. Connect D1 (RX) directly to TMC2208 UART pin
+// 2. Connect D2 (TX) to one leg of 1kΩ resistor
+// 3. Connect other leg of resistor to TMC2208 UART pin
+// 4. Both RX and TX connect to the SAME UART pin on TMC2208
+
+Example:
+ESP8266                                     TMC2208
+RX (D1) ----------------------------------- UART
+                           |
+TX (D2) ------[1kΩ]-------|
+
+
+If you haven't soldered the pads below to enable UART connect MS1 & 2 to Ground
+GND                  | MS1               | -                 | -
+GND                  | MS2               | -                 | -
+
 
 TMC2208 Driver      | NEMA17 Stepper    | Wire Color        | Description
 --------------------|-------------------|-------------------|------------------
@@ -131,12 +87,12 @@ UART Communication:
 // ====================== Pin Definitions =========================
 #define STEP_PIN D3           // Step signal pin GPIO0
 #define DIR_PIN D4            // Direction control pin GPIO2
-#define ENABLE_PIN D7         // Enable pin (active LOW) GPIO13	
+#define ENABLE_PIN D7         // Enable pin (active LOW) GPIO13  
 #define OPEN_SWITCH_PIN D5    // Open/anticlockwise switch GPIO14
-#define CLOSED_SWITCH_PIN D6  // Closed/clockwise switch GPIO12	
+#define CLOSED_SWITCH_PIN D6  // Closed/clockwise switch GPIO12 
+#define RX_PIN D1             // TMC2208 RX pin
+#define TX_PIN D2            // TMC2208 TX pin
 
-#define RX_PIN D1             // Software UART RX (connect to PDN_UART) GPIO5	 
-#define TX_PIN D2             // Software UART TX (connect to PDN) GPIO4
 
 // ====================== TMC2208 Configuration ===================
 //Locate the Sense Resistors: They are two small, black, rectangular surface-mount (SMD) components usually located close to the main TMC driver chip. 
@@ -154,7 +110,6 @@ UART Communication:
 // Create TMC2208Stepper using SoftwareSerial via RX/TX
 SoftwareSerial tmc_serial(RX_PIN, TX_PIN);
 TMC2208Stepper driver(&tmc_serial, R_SENSE);
-
 
 // ====================== Stepper / TMC22087 Config =====================
 const uint16_t STEPS_PER_REV = 200; // How many steps your Stepper takes to complete a single 360 movement.
@@ -232,7 +187,6 @@ unsigned long movementStartTime = 0;
 void setup() {
   Serial.begin(115200);
 
-
   pinMode(ENABLE_PIN, OUTPUT);
   //Immediately disable the motor to prevent any odd startup behaviour
   digitalWrite(ENABLE_PIN, HIGH);
@@ -254,9 +208,9 @@ void setup() {
   // Test UART communication
   Serial.println("Testing TMC2208 UART connection...");
   if (driver.test_connection()) {
-    Serial.println("✓ UART connection successful");
+    Serial.println("UART connection successful");
   } else {
-    Serial.println("✗ UART connection FAILED - Check wiring!");
+    Serial.println("UART connection FAILED - Check wiring!");
     Serial.println("Commands may not be reaching the driver properly.");
   }
 
@@ -284,7 +238,7 @@ void setup() {
   Serial.println("\nUser connected. Initializing system...");
   Serial.println("-----------------------------------------------------");
   Serial.println("\nStepper UART control started.");
-  Serial.println("Enter 'Open', 'Close', 'Kill, 'Config', or '?' and press Enter.");
+  Serial.println("Enter 'Open', 'Close', 'Kill, 'Config', 'Debug','Comtest' or '?' and press Enter.");
   Serial.println("Enter '?' to see these instructions again or for more information");
   Serial.println("Enter 'KILL' to Stop all function Immediately");
   Serial.println("-----------------------------------------------------\n");
@@ -307,9 +261,10 @@ void setup() {
  */
 void applyConfiguration() {
   // Add a small delay between each command to ensure the TMC2208 has time to process it.
-  Serial.println("Setting RMS Current to 1200mA...");
-  //driver.rms_current(RMS_CURRENT);
-  driver.rms_current(1200, 0.5);  // 1200mA, 50% hold current
+  Serial.println("Setting RMS Current to..");
+  Serial.print(RMS_CURRENT);
+  driver.rms_current(RMS_CURRENT);
+  //driver.rms_current(1200, 0.5);  // 1200mA, 50% hold current
 
   delay(100);  // Give time for setting to apply
   Serial.println("Setting Microsteps...");  
@@ -509,17 +464,32 @@ void handleSerialCommands() {
       Serial.println("**************************************************************************************************************");
       Serial.println("                                                HELP                                                          ");
       Serial.println("**************************************************************************************************************");
-      Serial.println("The available commands you can enter are 'Open', 'Close', 'Kill, 'Config', and '?'");
+      Serial.println("The available commands you can enter are 'Open', 'Close', 'Kill, 'Config', 'Debug', 'Comtest' and '?'");
       Serial.println("They are not case sensitive");
       Serial.println("");
       Serial.println("OPEN - Runs the stepper motor Anti-clockwise and stops when the Open switch (Connected to D5) is pulled LOW");
       Serial.println("CLOSE - Runs the stepper motor Clockwise and stops when the Closed switch (Connected to D6) is pulled LOW");
       Serial.println("Both close and Open will stop automatically if a limit switch is not triggered within 3 seconds");
       Serial.println("KILL - Immediately stops all actions, manual reboot is required");
+      Serial.println("DEBUG - Prints out any driver error messages");
       Serial.println("CONFIG - Displays the current paramateres applied to the TMC2208");
+      Serial.println("COMTEST - Tests to confirm UART mode is working");
       Serial.println("? - Displays this text");
       Serial.println("**************************************************************************************************************");
       Serial.println("_");
+    }
+    else if (command.equalsIgnoreCase("debug")) {
+      printDriverStatus();
+    }
+    else if (command.equalsIgnoreCase("comtest")) {
+      // Test communication
+      Serial.println("TMC2208 UART Test Starting...");
+      delay(1000);
+      if (testTMC2208()) {
+        Serial.println("TMC2208 UART: SUCCESS");
+      } else {
+        Serial.println("TMC2208 UART: FAILED");
+      }
     }
     else {
       // Handles empty commands (like a lone Enter press) and unknown commands
@@ -596,4 +566,39 @@ void printDriverStatus() {
   if (driver.ola())    Serial.print("Open Load A ");
   if (driver.olb())    Serial.print("Open Load B ");
   Serial.println();
+}
+
+// =================================| UART coms test |=================================
+
+bool testTMC2208() {
+  // Read GCONF register (0x00)
+  uint8_t cmd[] = {0x05, 0x00, 0x00, 0x00, 0x00, 0x01, 0x8A};
+  
+  Serial.print("Sending command: ");
+  for (int i = 0; i < 7; i++) {
+    Serial.print("0x");
+    Serial.print(cmd[i], HEX);
+    Serial.print(" ");
+  }
+  Serial.println();
+  
+  tmc_serial.write(cmd, 7);
+  delay(10);
+  
+  if (tmc_serial.available() >= 8) {
+    Serial.print("Response received: ");
+    uint8_t response[8];
+    tmc_serial.readBytes(response, 8);
+    
+    for (int i = 0; i < 8; i++) {
+      Serial.print("0x");
+      Serial.print(response[i], HEX);
+      Serial.print(" ");
+    }
+    Serial.println();
+    return true;
+  } else {
+    Serial.println("No response received");
+    return false;
+  }
 }
