@@ -12,6 +12,10 @@
  * "status" - displays limit switch values along with motor time and speed
  * "kill" - immediately stops everything and reboots
 
+ */
+
+
+/*
  * WIRING TABLE:
  * 
  * ESP8266 NodeMCU → L298N
@@ -74,8 +78,11 @@ enum MotorState {
 };
 MotorState currentState = IDLE;
 
-int MOTOR_SPEED = 120;    // PWM value 0-255 (start conservative, you can use speed to change this in the code)
+int MOTOR_SPEED = 100;    // PWM value 0-255 (start conservative, you can use speed to change this in the code)
 int MOVE_TIME = 3000;     // How long to run motor (milliseconds)
+bool KICKSTART = true;    // Set to true if your motor needs a quick burst to spin up
+int KICKSTART_POWER = 255;  // PWM value for kickstart (0-255)
+int KICKSTART_TIME = 100;   // How long to kickstart in milliseconds
 
 //------------============================== | SETUP | ==============================------------**
 
@@ -169,8 +176,12 @@ void turnClockwise() {
  digitalWrite(IN1, HIGH);  // Forward direction
  digitalWrite(IN2, LOW);
  
- // Start motor at set speed
- analogWrite(ENA, MOTOR_SPEED);
+  // Start motor with optional kickstart
+  if (KICKSTART) {
+    analogWrite(ENA, KICKSTART_POWER);  // Full power burst
+    delay(KICKSTART_TIME);
+  }
+  analogWrite(ENA, MOTOR_SPEED);  // Normal operating speed
  
  // Run until endstop is triggered, timed out or kill command issued
  unsigned long startTime = millis();
@@ -215,8 +226,12 @@ void turnAnticlockwise() {
  digitalWrite(IN1, LOW);   // Reverse direction
  digitalWrite(IN2, HIGH);
  
- // Start motor at set speed
- analogWrite(ENA, MOTOR_SPEED);
+  // Start motor with optional kickstart
+  if (KICKSTART) {
+    analogWrite(ENA, KICKSTART_POWER);  // Full power burst
+    delay(KICKSTART_TIME);
+  }
+  analogWrite(ENA, MOTOR_SPEED);  // Normal operating speed
  
  // Run until endstop is triggered, timed out or kill command issued
  unsigned long startTime = millis();
@@ -299,57 +314,86 @@ if (command == "stop") {
     currentState = IDLE;
   }
 
-else if (command == "time") {
-  Serial.print("Current motor timeout: ");
-  Serial.print(MOVE_TIME);
-  Serial.println(" ms");
-  Serial.println("Enter new timeout (milliseconds): ");
-  
-  // Wait for input
-  while (Serial.available() == 0) {
-    yield();
+  else if (command.startsWith("time")) {
+    // Check if command has a value after "time"
+    if (command.length() > 4) {  // "time" is 4 characters
+      String timeStr = command.substring(5);  // Get everything after "time "
+      int newTime = timeStr.toInt();
+      
+      if (newTime > 0) {
+        MOVE_TIME = newTime;
+        Serial.print("Motor timeout updated to: ");
+        Serial.print(MOVE_TIME);
+        Serial.println(" ms");
+      } else {
+        Serial.println("Invalid time. Must be greater than 0");
+      }
+    } else {
+      // No value provided, prompt for input
+      Serial.print("Current motor timeout: ");
+      Serial.print(MOVE_TIME);
+      Serial.println(" ms");
+      Serial.println("Enter new timeout (milliseconds): ");
+      
+      while (Serial.available() == 0) {
+        yield();
+      }
+      
+      String timeInput = Serial.readStringUntil('\n');
+      timeInput.trim();
+      int newTime = timeInput.toInt();
+      
+      if (newTime > 0) {
+        MOVE_TIME = newTime;
+        Serial.print("Motor timeout updated to: ");
+        Serial.print(MOVE_TIME);
+        Serial.println(" ms");
+      } else {
+        Serial.println("Invalid time. Must be greater than 0");
+      }
+    }
+    Serial.println("_");
   }
-  
-  String timeInput = Serial.readStringUntil('\n');
-  timeInput.trim();
-  int newTime = timeInput.toInt();
-  
-  if (newTime > 0) {
-    MOVE_TIME = newTime;
-    Serial.print("Motor timeout updated to: ");
-    Serial.print(MOVE_TIME);
-    Serial.println(" ms");
-  } else {
-    Serial.println("Invalid time. Must be greater than 0");
-  }
-  Serial.println("_");
- }
 
-  else if (command == "speed") {
-  Serial.print("Current motor speed: ");
-  Serial.println(MOTOR_SPEED);
-  Serial.println("Note: Some motors won't turn until a certain PWM minimum is hit, so slowly increase and retest.");
-  Serial.println("Enter new speed (0-255): ");
-  
-  // Wait for input
-  while (Serial.available() == 0) {
-    yield();
+  else if (command.startsWith("speed")) {
+    // Check if command has a value after "speed"
+    if (command.length() > 5) {  // "speed" is 5 characters
+      String speedStr = command.substring(6);  // Get everything after "speed "
+      int newSpeed = speedStr.toInt();
+      
+      if (newSpeed >= 0 && newSpeed <= 255) {
+        MOTOR_SPEED = newSpeed;
+        Serial.print("Motor speed updated to: ");
+        Serial.println(MOTOR_SPEED);
+      } else {
+        Serial.println("Invalid speed. Must be 0-255");
+      }
+    } else {
+      // No value provided, prompt for input
+      Serial.print("Current motor speed: ");
+      Serial.println(MOTOR_SPEED);
+      Serial.println("Note: Some motors won't turn until a certain PWM minimum is hit, so slowly increase and retest.");
+      Serial.println("Enter new speed (0-255): ");
+      
+      while (Serial.available() == 0) {
+        yield();
+      }
+      
+      String speedInput = Serial.readStringUntil('\n');
+      speedInput.trim();
+      int newSpeed = speedInput.toInt();
+      
+      if (newSpeed >= 0 && newSpeed <= 255) {
+        MOTOR_SPEED = newSpeed;
+        Serial.print("Motor speed updated to: ");
+        Serial.println(MOTOR_SPEED);
+      } else {
+        Serial.println("Invalid speed. Must be 0-255");
+      }
+    }
+    Serial.println("_");
   }
   
-  String speedInput = Serial.readStringUntil('\n');
-  speedInput.trim();
-  int newSpeed = speedInput.toInt();
-  
-  if (newSpeed >= 0 && newSpeed <= 255) {
-    MOTOR_SPEED = newSpeed;
-    Serial.print("Motor speed updated to: ");
-    Serial.println(MOTOR_SPEED);
-  } else {
-    Serial.println("Invalid speed. Must be 0-255");
-  }
-  Serial.println("_");
-}
-
   else if (command == "close") {
     Serial.println("Closing door...(Anti-Clockwise)");
     currentState = MOVING_CLOSE;
