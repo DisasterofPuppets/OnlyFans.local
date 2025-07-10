@@ -10,12 +10,8 @@
  * "speed" - enter new speed for the motor
  * "time" - enter a new duration for the motor
  * "status" - displays limit switch values along with motor time and speed
- * "kill" - immediately stops everything (which then requires a reboot)
+ * "kill" - immediately stops everything and reboots
 
- */
-
-
-/*
  * WIRING TABLE:
  * 
  * ESP8266 NodeMCU → L298N
@@ -142,6 +138,8 @@ void setup() {
 }
 //--------------------------------------- | SETUP END | ----------------------------------------------**
 
+
+
 //------------============================== | FUNCTIONS | ==============================------------**
 
 
@@ -161,63 +159,93 @@ void stopMotor() {
 
 //--------------============== | Turn Clockwise Function| ==============--------------
 void turnClockwise() {
-  // Check if already at open position
-  if (digitalRead(ENDSTOP_OPEN) == LOW) {
-    Serial.println("But, the Door is already open!");
-    return;
-  }
-  
-  // Set direction for opening (you may need to reverse these)
-  digitalWrite(IN1, HIGH);  // Forward direction
-  digitalWrite(IN2, LOW);
-  
-  // Start motor at set speed
-  analogWrite(ENA, MOTOR_SPEED);
-  
-  // Run until endstop is triggered or timeout
-  unsigned long startTime = millis();
-  while (digitalRead(ENDSTOP_OPEN) == HIGH && (millis() - startTime) < MOVE_TIME) {
-    delay(10); // Small delay to prevent excessive polling
-  }
-  
-  stopMotor();
-  
-  if (digitalRead(ENDSTOP_OPEN) == LOW) {
-    Serial.println("Door opened! (Endstop triggered)");
-  } else {
-    Serial.println("Door open timeout - check endstop or increase MOVE_TIME");
-  }
+ // Check if already at open position
+ if (digitalRead(ENDSTOP_OPEN) == LOW) {
+   Serial.println("But, the Door is already open!");
+   return;
+ }
+ 
+ // Set direction for opening (you may need to reverse these)
+ digitalWrite(IN1, HIGH);  // Forward direction
+ digitalWrite(IN2, LOW);
+ 
+ // Start motor at set speed
+ analogWrite(ENA, MOTOR_SPEED);
+ 
+ // Run until endstop is triggered, timed out or kill command issued
+ unsigned long startTime = millis();
+ while (digitalRead(ENDSTOP_OPEN) == HIGH && (millis() - startTime) < MOVE_TIME) {
+   // Check for emergency commands
+   if (Serial.available() > 0) {
+     String command = Serial.readStringUntil('\n');
+     command.trim();
+     command.toLowerCase();
+     if (command == "kill" || command == "stop") {
+       Serial.println("Emergency stop received!");
+       stopMotor();
+       if (command == "kill") {
+         Serial.println("System halting. Manual reboot required.");
+         while (true) { yield(); }
+       }
+       return;
+     }
+   }
+   delay(10);
+ }
+ 
+ stopMotor();
+ 
+ if (digitalRead(ENDSTOP_OPEN) == LOW) {
+   Serial.println("Door opened! (Endstop triggered)");
+ } else {
+   Serial.println("Door open timeout - check endstop or increase MOVE_TIME");
+ }
 }
 //--------------------------------------------------------- Turn Clockwise END
 
 //--------------============== | Turn Anticlockwise Function| ==============--------------
 void turnAnticlockwise() {
-  // Check if already at close position
-  if (digitalRead(ENDSTOP_CLOSE) == LOW) {
-    Serial.println("But, the Door is already closed!");
-    return;
-  }
-  
-  // Set direction for closing (opposite of opening)
-  digitalWrite(IN1, LOW);   // Reverse direction
-  digitalWrite(IN2, HIGH);
-  
-  // Start motor at set speed
-  analogWrite(ENA, MOTOR_SPEED);
-  
-  // Run until endstop is triggered or timeout
-  unsigned long startTime = millis();
-  while (digitalRead(ENDSTOP_CLOSE) == HIGH && (millis() - startTime) < MOVE_TIME) {
-    delay(10); // Small delay to prevent excessive polling
-  }
-  
-  stopMotor();
-  
-  if (digitalRead(ENDSTOP_CLOSE) == LOW) {
-    Serial.println("Door closed! (Endstop triggered)");
-  } else {
-    Serial.println("Door close timeout - check endstop or increase MOVE_TIME");
-  }
+ // Check if already at close position
+ if (digitalRead(ENDSTOP_CLOSE) == LOW) {
+   Serial.println("But, the Door is already closed!");
+   return;
+ }
+ 
+ // Set direction for closing (opposite of opening)
+ digitalWrite(IN1, LOW);   // Reverse direction
+ digitalWrite(IN2, HIGH);
+ 
+ // Start motor at set speed
+ analogWrite(ENA, MOTOR_SPEED);
+ 
+ // Run until endstop is triggered, timed out or kill command issued
+ unsigned long startTime = millis();
+ while (digitalRead(ENDSTOP_CLOSE) == HIGH && (millis() - startTime) < MOVE_TIME) {
+   // Check for emergency commands
+   if (Serial.available() > 0) {
+     String command = Serial.readStringUntil('\n');
+     command.trim();
+     command.toLowerCase();
+     if (command == "kill" || command == "stop") {
+       Serial.println("Emergency stop received!");
+       stopMotor();
+       if (command == "kill") {
+         Serial.println("System halting. Manual reboot required.");
+         while (true) { yield(); }
+       }
+       return;
+     }
+   }
+   delay(10);
+ }
+ 
+ stopMotor();
+ 
+ if (digitalRead(ENDSTOP_CLOSE) == LOW) {
+   Serial.println("Door closed! (Endstop triggered)");
+ } else {
+   Serial.println("Door close timeout - check endstop or increase MOVE_TIME");
+ }
 }
 //--------------------------------------------------------- Turn Anticlockwise END
 
@@ -233,16 +261,12 @@ void handleSerialCommands() {
 
     // The 'Kill' command is a special case and must be processed immediately,
     // regardless of the current motor state.
-  if (command =="kill") {
-    Serial.println("!!! KILL COMMAND RECEIVED. ");
-    stopMotor();
-    Serial.println("System halting. Manual reboot required.");
-    while (true) {
-      // Use yield() in an infinite loop on ESP8266 to prevent watchdog reset
-      yield();
-    }
-    return; // Stop further processing
-  }
+if (command == "kill") {
+  Serial.println("Killswitch Applied !!!! System Rebooting !!!!");
+  stopMotor();
+  delay(200);
+  ESP.reset(); // Clean restart instead of infinite loop
+}
 
   //non blocking stop command
 if (command == "stop") {
@@ -353,7 +377,7 @@ else if (command == "time") {
      Serial.println("STATUS - Reports the End Stop values to determine door position along with the current motor speed and duration settings.");
      Serial.println("SPEED - Change the motor speed variable");
      Serial.println("TIME - Change the motor movement duration");
-     Serial.println("KILL - Immediately stops all actions, manual reboot is required");
+     Serial.println("KILL - Immediately stops all actions and reboots the ESP");
      Serial.println("? - Displays this text");
      Serial.println("**************************************************************************************************************");
      Serial.println("_");
