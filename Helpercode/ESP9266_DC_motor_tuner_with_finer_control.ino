@@ -13,6 +13,12 @@
  * "poff" - enter pulse off time
  * "status" - displays limit switch values along with motor time and speed
  * "kill" - immediately stops everything and reboots
+ * 
+ * Add "force" to any command to bypass validation limits:
+ * "speed 300 force" - sets speed to 300 (over normal 255 limit)
+ * "pon 5000 force" - sets pulse on to 5000ms (over normal 1000ms limit)
+ * "poff 5000 force" - sets pulse off to 5000ms (over normal 2000ms limit)
+ * "time 100000 force" - sets duration to 100000ms (over normal 60000ms limit)
  */
 
 /*
@@ -141,7 +147,8 @@ void setup() {
   Serial.println("| L298N controller for 12V Drill motor.         |");
   Serial.println("-------------------------------------------------");
   Serial.println("Enter 'Open', 'Close', 'Stop', 'Status', 'Speed', 'Time', 'Pon', 'Poff', 'Kill', or Enter '?' for help.");
-  Serial.println("Enter 'KILL' to Stop all function Immediately (You will need to manually reboot after)");
+  Serial.println("Enter 'KILL' to Stop all function Immediately and resets the ESP)");
+  Serial.println("Add 'force' to bypass validation limits (e.g., 'speed 300 force')");
   Serial.println("-------------------------------------------------\n");
   
   delay(100);
@@ -204,8 +211,10 @@ void turnClockwise() {
        Serial.println("Emergency stop received!");
        stopMotor();
        if (command == "kill") {
-         Serial.println("System halting. Manual reboot required.");
-         while (true) { yield(); }
+         stopMotor();
+         Serial.println("Killswitch Applied !!!! System Rebooting !!!!");
+         delay(200);
+         ESP.reset();
        }
        return;
      }
@@ -258,8 +267,10 @@ void turnAnticlockwise() {
        Serial.println("Emergency stop received!");
        stopMotor();
        if (command == "kill") {
-         Serial.println("System halting. Manual reboot required.");
-         while (true) { yield(); }
+         stopMotor();
+         Serial.println("Killswitch Applied !!!! System Rebooting !!!!");
+         delay(200);
+         ESP.reset();
        }
        return;
      }
@@ -329,22 +340,24 @@ void handleSerialCommands() {
       // Check if command has a value after "time"
       if (command.length() > 4) {  // "time" is 4 characters
         String timeStr = command.substring(5);  // Get everything after "time "
+        bool forceMode = timeStr.indexOf("force") != -1;
         int newTime = timeStr.toInt();
         
-        if (newTime >= 100 && newTime <= 60000) {
+        if (forceMode || (newTime >= 100 && newTime <= 60000)) {
           MOVE_TIME = newTime;
-          Serial.print("Motor timeout updated to: ");
+          Serial.print(forceMode ? "FORCE: " : "");
+          Serial.print("Motor duration updated to: ");
           Serial.print(MOVE_TIME);
           Serial.println(" ms");
         } else {
-          Serial.println("Invalid time. Must be 100-60000ms");
+          Serial.println("Invalid duration. Must be 100-60000ms, or add 'force' to bypass");
         }
       } else {
         // No value provided, prompt for input
         Serial.print("Current motor timeout: ");
         Serial.print(MOVE_TIME);
         Serial.println(" ms");
-        Serial.println("Enter new timeout [100-60000ms]: ");
+        Serial.println("Enter new duration [100-60000ms]: ");
         
         while (Serial.available() == 0) {
           yield();
@@ -356,11 +369,11 @@ void handleSerialCommands() {
         
         if (newTime >= 100 && newTime <= 60000) {
           MOVE_TIME = newTime;
-          Serial.print("Motor timeout updated to: ");
+          Serial.print("Motor duration updated to: ");
           Serial.print(MOVE_TIME);
           Serial.println(" ms");
         } else {
-          Serial.println("Invalid time. Must be 100-60000ms");
+          Serial.println("Invalid duration. Must be 100-60000ms");
         }
       }
       Serial.println("_");
@@ -370,14 +383,16 @@ void handleSerialCommands() {
       // Check if command has a value after "speed"
       if (command.length() > 5) {  // "speed" is 5 characters
         String speedStr = command.substring(6);  // Get everything after "speed "
+        bool forceMode = speedStr.indexOf("force") != -1;
         int newSpeed = speedStr.toInt();
         
-        if (newSpeed >= 10 && newSpeed <= 255) {
+        if (forceMode || (newSpeed >= 10 && newSpeed <= 255)) {
           MOTOR_SPEED = newSpeed;
+          Serial.print(forceMode ? "FORCE: " : "");
           Serial.print("Motor speed updated to: ");
           Serial.println(MOTOR_SPEED);
         } else {
-          Serial.println("Invalid speed. Must be 10-255");
+          Serial.println("Invalid speed. Must be 10-255, or add 'force' to bypass");
         }
       } else {
         // No value provided, prompt for input
@@ -430,11 +445,15 @@ void handleSerialCommands() {
        Serial.println("STOP - Stops the motor");
        Serial.println("STATUS - Reports the End Stop values to determine door position along with current settings.");
        Serial.println("SPEED - Change the motor speed variable {usage | speed [10-255] or 'speed' to be prompted}");
-       Serial.println("TIME - Change the motor movement duration {usage | time [100-60000] or 'time' to be prompted}");
+       Serial.println("TIME - Change the motor duration (how long it runs for){usage | time [100-60000] or 'time' to be prompted}");
        Serial.println("PON - Change the Pulse On Timing {usage | pon [10-1000] or 'pon' to be prompted}");
        Serial.println("POFF - Change the Pulse Off Timing {usage | poff [10-2000] or 'poff' to be prompted}");
        Serial.println("KILL - Immediately stops all actions and reboots the ESP");
        Serial.println("? - Displays this text");
+       Serial.println("");
+       Serial.println("FORCE MODE: Add 'force' to any command to bypass validation limits: USE AT OWN RISK");
+       Serial.println("Example: 'speed 300 force' - sets speed to 300 (over normal 255 limit)");
+       Serial.println("Example: 'pon 5000 force' - sets pulse on to 5000ms (over normal 1000ms limit)");
        Serial.println("**************************************************************************************************************");
        Serial.println("_");
     }
@@ -443,15 +462,17 @@ void handleSerialCommands() {
       // Check if command has a value after "pon"
       if (command.length() > 3) {  // "pon" is 3 characters
         String ponStr = command.substring(4);  // Get everything after "pon "
+        bool forceMode = ponStr.indexOf("force") != -1;
         int newPon = ponStr.toInt();
         
-        if (newPon >= 10 && newPon <= 1000) {
+        if (forceMode || (newPon >= 10 && newPon <= 1000)) {
           PULSE_ON_TIME = newPon;
+          Serial.print(forceMode ? "FORCE: " : "");
           Serial.print("Pulse ON time updated to: ");
           Serial.print(PULSE_ON_TIME);
           Serial.println(" ms");
         } else {
-          Serial.println("Invalid pulse on time. Must be 10-1000ms");
+          Serial.println("Invalid pulse on time. Must be 10-1000ms, or add 'force' to bypass");
         }
       } else {
         // No value provided, prompt for input
@@ -484,15 +505,17 @@ void handleSerialCommands() {
       // Check if command has a value after "poff"
       if (command.length() > 4) {  // "poff" is 4 characters
         String poffStr = command.substring(5);  // Get everything after "poff "
+        bool forceMode = poffStr.indexOf("force") != -1;
         int newPoff = poffStr.toInt();
         
-        if (newPoff >= 10 && newPoff <= 2000) {
+        if (forceMode || (newPoff >= 10 && newPoff <= 2000)) {
           PULSE_OFF_TIME = newPoff;
+          Serial.print(forceMode ? "FORCE: " : "");
           Serial.print("Pulse OFF time updated to: ");
           Serial.print(PULSE_OFF_TIME);
           Serial.println(" ms");
         } else {
-          Serial.println("Invalid pulse off time. Must be 10-2000ms");
+          Serial.println("Invalid pulse off time. Must be 10-2000ms, or add 'force' to bypass");
         }
       } else {
         // No value provided, prompt for input
