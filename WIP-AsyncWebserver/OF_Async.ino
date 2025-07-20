@@ -3,6 +3,8 @@ WIP - Zapping bugs
 
 To Do
 MDNS - nah shes fucked. use hack instead
+FETCH CURTAIN STATES / RTC
+SERIAL MONITOR
 SERVO
 
 * Window exhaust fan curtain control
