@@ -30,19 +30,36 @@ Hardware list
 #include <LittleFS.h>
 #include <ESPAsyncTCP.h>
 #include <ESPAsyncWebServer.h>
+#include <user_interface.h>
 
 //Required Variables **********************************************
+
+// Structure stored in RTC memory to remember the curtain state across resets
+struct RTCData {
+  uint32_t magic;
+  bool lastWasOpen;
+};
+
+RTCData rtcData;
+uint32_t RTC_MEM_START = 65;
+
+// Runtime flags and state
 
 #define LOG_BUFFER_SIZE 1024
 String logBuffer = "";
 int currentPulse = 0; // tracks last pulse sent to the servo
 unsigned long lastAlive = 0;
+bool isOpen = false;
+bool isMoving = false;
+bool skipStartupMovement = false;
+
+
 
 //**************ADJUST THESE SETTINGS FOR YOUR SETUP **************
 
 // Wi-Fi Credentials
-const char* ssid = "SLOWKEVIN";
-const char* password = "FUKevin07";
+const char* ssid = "YOURBANK";
+const char* password = "DETAILSHERE";
 
 // -= SERVER SETTINGS =-  (network configuration for the HTTP server)
 
@@ -132,6 +149,11 @@ void Log(const String& msg) {
 // Handles any restart requests from the server
 
 void handleRestart(AsyncWebServerRequest *request) {
+  
+  rtcData.magic = 0xCAFEBABE;
+  rtcData.lastWasOpen = isOpen; // ← Track actual curtain state
+  system_rtc_mem_write(RTC_MEM_START, &rtcData, sizeof(rtcData));
+  
   Log("Restarting Server...");
   request->send(200, "text/plain", "Restarting...");
   delay(500);
@@ -147,8 +169,8 @@ void handleOpen(AsyncWebServerRequest *request) {
   Log("Moved to " + String(OPEN_ANGLE) + " degrees (" + String(currentPulse) + " µs)");
 //  delay(1000);
 //  myServo.detach();
-//  isMoving = false;
-//  isOpen = true;
+  isMoving = false;
+  isOpen = true;
   request->send(200, "text/plain", "Curtain opened.");
 }
 
@@ -161,8 +183,8 @@ void handleClose(AsyncWebServerRequest *request) {
   Log("Moved to " + String(CLOSED_ANGLE) + " degrees (" + String(currentPulse) + " µs)");
 //  delay(1000);
 //  myServo.detach();
-//  isMoving = false;
-//  isOpen = false;
+  isMoving = false;
+  isOpen = false;
   request->send(200, "text/html", "Curtain closed.");
 }
 
@@ -205,6 +227,21 @@ void setup() {
   
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, HIGH); // OFF (active LOW)
+
+// Was the previous reset triggered by our restart handler?
+
+  system_rtc_mem_read(RTC_MEM_START, &rtcData, sizeof(rtcData));
+  if (rtcData.magic == 0xCAFEBABE) {
+    skipStartupMovement = true;
+    isOpen = rtcData.lastWasOpen;
+    Log("User initiated restart. Skipping startup movement.");
+    Log("Curtain state restored: " + String(isOpen ? "OPEN" : "CLOSED"));
+    // ensure smooth moves start from the remembered position
+    //currentPulse = angleToMicros(isOpen ? OPEN_ANGLE : CLOSED_ANGLE);
+    rtcData.magic = 0;
+    system_rtc_mem_write(RTC_MEM_START, &rtcData, sizeof(rtcData));
+  }
+
 
 //Initialize WiFi
 
@@ -343,10 +380,15 @@ void setup() {
 
     server.onNotFound(notFound);
 
-  // Endpoints that control the curtain and expose status/logs
-    server.on("/restart", HTTP_GET, handleRestart);
-    server.on("/open", HTTP_GET, handleOpen);
-    server.on("/close", HTTP_GET, handleClose);
+// Endpoints that control the curtain and expose status/logs
+  server.on("/curtain-status", HTTP_GET, [](AsyncWebServerRequest *request){
+    String state = isMoving ? "moving" : (isOpen ? "open" : "closed");
+    request->send(200, "application/json", "{\"state\":\"" + state + "\"}");
+  });
+  server.on("/open", handleOpen);
+  server.on("/close", handleClose);
+  server.on("/restart", handleRestart);
+  
 
 // Start listening for HTTP requests
     server.begin();
@@ -359,6 +401,16 @@ void setup() {
 void loop() {
     
     CheckWifi();
+
+  unsigned long now = millis();
+  if (now - lastAlive >= 20UL * 60UL * 1000UL) {  // 20 minutes
+    Log("[DEBUG] Keep-alive blink");
+    digitalWrite(LED_PIN, LOW);   // ON
+    delay(100);                   // short blink
+    digitalWrite(LED_PIN, HIGH);  // OFF
+    lastAlive = now;
+  }
+
     if (Serial.available()) {
         String command = Serial.readStringUntil('\n');
         command.trim();
