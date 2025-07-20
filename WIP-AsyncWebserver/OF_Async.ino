@@ -3,9 +3,10 @@ WIP - Zapping bugs
 
 To Do
 MDNS - nah shes fucked. use hack instead
-FETCH CURTAIN STATES / RTC
-SERIAL MONITOR
+FETCH CURTAIN STATES / RTC - DONE
+SERIAL MONITOR - DONE
 SERVO
+REMOVE SHADOW ON SVG LOGO (may be in the Style.css) - Done, think it was just my eyes
 
 * Window exhaust fan curtain control
 * This shoddily put together code creates a server on an ESP8266 via Http
@@ -388,7 +389,13 @@ void setup() {
   server.on("/open", handleOpen);
   server.on("/close", handleClose);
   server.on("/restart", handleRestart);
-  
+  server.on("/log", HTTP_GET, [](AsyncWebServerRequest *request){
+  if (logBuffer.length() == 0) {
+    request->send(200, "text/plain", "No log data available yet...\n");
+  } else {
+    request->send(200, "text/plain", logBuffer);
+  }
+});
 
 // Start listening for HTTP requests
     server.begin();
