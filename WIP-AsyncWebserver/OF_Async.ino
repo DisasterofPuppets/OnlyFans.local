@@ -1,15 +1,18 @@
-// WIP - BUG ZAPPING
-
-
 /* --------------------------------------------------------------  
+WIP - Zapping bugs
+
+To Do
+MDNS
+SERVO
+
 * Window exhaust fan curtain control
 * This shoddily put together code creates a server on an ESP8266 via Http
 * that communicates with a Servo and toggles it between defined angles
 * Using ESP8266 NodeMCU 1.0 ESP-12
 * 2025 http://DisasterOfPuppets.com
 
-Shout out to Saurav-z for the Server and file upload functionality https://github.com/saurav-z/esp-web-server/tree/main/AdvancedWebServer
-Check out their youtube channel (TrachitZ) https://www.youtube.com/watch?v=jzlNv83slz8
+Shout out to TrachitZ for the Server and file upload functionality example https://www.youtube.com/watch?v=jzlNv83slz8
+
 
 Hardware list
 1 x 1N5822 Schottky diode
@@ -36,8 +39,8 @@ unsigned long lastAlive = 0;
 //**************ADJUST THESE SETTINGS FOR YOUR SETUP **************
 
 // Wi-Fi Credentials
-const char* ssid = "YOURBANK";
-const char* password = "DETAILSHERE";
+const char* ssid = "SLOWKEVIN";
+const char* password = "FUKevin07";
 
 // -= SERVER SETTINGS =-  (network configuration for the HTTP server)
 
@@ -111,7 +114,7 @@ void CMDRestart() {
 
 // Append a message to the log and keep the buffer within limits
 // Required to store variable in memory to flag software restart
-
+/*
 void Log(const String& msg) {
   if (msg.length() == 0) return; // ignore empty logs
   Serial.println(msg); 
@@ -120,7 +123,18 @@ void Log(const String& msg) {
     logBuffer = logBuffer.substring(logBuffer.length() - LOG_BUFFER_SIZE); // trim oldest
   }
 }
-
+*/
+void Log(const String& msg) {
+  Serial.print("[RAW LOG] '");
+  Serial.print(msg);
+  Serial.println("'");
+  
+  Serial.println(msg);
+  logBuffer += msg + "\n";
+  if (logBuffer.length() > LOG_BUFFER_SIZE) {
+    logBuffer = logBuffer.substring(logBuffer.length() - LOG_BUFFER_SIZE);
+  }
+}
 
 //****************** HANDLER FUNCTIONS **********************
 
@@ -236,28 +250,91 @@ void setup() {
   if (!filesUploaded) {
 // Serve file upload page
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-      request->send(200, "text/html", "<form method='POST' action='/upload' enctype='multipart/form-data'><input type='file' name='file' multiple><input type='submit' value='Upload'></form>");
-    });
+      request->send(200, "text/html",
+      R"rawliteral(
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Upload Files</title>
+          <style>
+            body { font-family: Arial; padding: 20px; }
+            #status { margin-top: 1em; color: green; }
+            #error { margin-top: 1em; color: red; }
+          </style>
+        </head>
+        <body>
+          <h2>Upload Files</h2>
+          <form id="uploadForm" enctype="multipart/form-data">
+            <input type="file" id="fileInput" name="file" multiple><br><br>
+            <input type="submit" value="Upload">
+          </form>
+          <div id="status"></div>
+          <div id="error"></div>
+
+          <script>
+            const form = document.getElementById('uploadForm');
+            const fileInput = document.getElementById('fileInput');
+            const statusDiv = document.getElementById('status');
+            const errorDiv = document.getElementById('error');
+
+            form.addEventListener('submit', function(event) {
+              event.preventDefault(); // prevent default form submission
+
+              if (!fileInput.files.length) {
+                errorDiv.textContent = "Please select files before uploading.";
+                statusDiv.textContent = "";
+                return;
+              }
+
+              errorDiv.textContent = "";
+              statusDiv.textContent = "Please wait, uploading files...";
+
+              const formData = new FormData();
+              for (let i = 0; i < fileInput.files.length; i++) {
+                formData.append("file", fileInput.files[i]);
+              }
+
+              const xhr = new XMLHttpRequest();
+              xhr.open("POST", "/upload", true);
+
+              xhr.onload = function() {
+                if (xhr.status === 200) {
+                  statusDiv.innerHTML = "Upload complete. <a href='/restart'>Restart Server</a>";
+                  fileInput.value = ""; // clear selected files
+                } else {
+                  errorDiv.textContent = "Upload failed. Try again.";
+                }
+              };
+
+              xhr.onerror = function() {
+                errorDiv.textContent = "Upload error. Check connection.";
+              };
+
+              xhr.send(formData);
+            });
+          </script>
+        </body>
+      </html>
+      )rawliteral");
+
+          });
 
 // Handle file upload
-    server.on("/upload", HTTP_POST, [](AsyncWebServerRequest *request) {
-      request->send(200, "text/html", "Upload successful<br><br>"
-      "<a href='/restart' style='color: blue; text-decoration: underline;'>Restart Server</a>");
-    }, [](AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) {
+  server.on("/upload", HTTP_POST, [](AsyncWebServerRequest *request) {
+      request->send(200); // Return blank success for AJAX to catch
+  }, [](AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) {
       if (!index) {
-        Serial.printf("UploadStart: %s\n", filename.c_str());
           request->_tempFile = LittleFS.open("/" + filename, "w");
       }
       if (len) {
-        request->_tempFile.write(data, len);
+          request->_tempFile.write(data, len);
       }
       if (final) {
-        request->_tempFile.close();
-        Serial.printf("UploadEnd: %s (%u)\n", filename.c_str(), index + len);
-        LittleFS.open("/uploaded.flag", "w").close();
-        listFiles();
+          request->_tempFile.close();
+          LittleFS.open("/uploaded.flag", "w").close();
+          listFiles();
       }
-    });
+  });
     } else {
 // Serve files from the filesystem
       server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
