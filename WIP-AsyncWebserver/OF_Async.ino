@@ -23,6 +23,31 @@ Hardware list
 1 x 12V 3 Amp power source
 1 x 5V Power source (or  simply power via USB connection to the ESP8266)
 -----------------------------------------------------------------*/
+/* --------------------------------------------------------------  
+WIP - Zapping bugs
+
+To Do
+MDNS
+SERVO
+
+* Window exhaust fan curtain control
+* This shoddily put together code creates a server on an ESP8266 via Http
+* that communicates with a Servo and toggles it between defined angles
+* Using ESP8266 NodeMCU 1.0 ESP-12
+* 2025 http://DisasterOfPuppets.com
+
+Shout out to TrachitZ for the Server and file upload functionality example https://www.youtube.com/watch?v=jzlNv83slz8
+
+
+Hardware list
+1 x 1N5822 Schottky diode
+1 x ESP8266 Microcontroller
+1 x DC Buck Converter (12v to 6V)
+2 x 1000 ohm Capacitors
+1 x Servo (DS3240 is my recommendation as it has some good torque)
+1 x 12V 3 Amp power source
+1 x 5V Power source (or  simply power via USB connection to the ESP8266)
+-----------------------------------------------------------------*/
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <LittleFS.h>
@@ -114,7 +139,7 @@ void CMDRestart() {
 
 // Append a message to the log and keep the buffer within limits
 // Required to store variable in memory to flag software restart
-/*
+
 void Log(const String& msg) {
   if (msg.length() == 0) return; // ignore empty logs
   Serial.println(msg); 
@@ -123,18 +148,7 @@ void Log(const String& msg) {
     logBuffer = logBuffer.substring(logBuffer.length() - LOG_BUFFER_SIZE); // trim oldest
   }
 }
-*/
-void Log(const String& msg) {
-  Serial.print("[RAW LOG] '");
-  Serial.print(msg);
-  Serial.println("'");
-  
-  Serial.println(msg);
-  logBuffer += msg + "\n";
-  if (logBuffer.length() > LOG_BUFFER_SIZE) {
-    logBuffer = logBuffer.substring(logBuffer.length() - LOG_BUFFER_SIZE);
-  }
-}
+
 
 //****************** HANDLER FUNCTIONS **********************
 
@@ -247,6 +261,11 @@ void setup() {
 // Check if files are already uploaded
   bool filesUploaded = LittleFS.exists("/uploaded.flag");
 
+  server.on("/uploading", HTTP_GET, [](AsyncWebServerRequest *request) {
+    Serial.println("[UPLOAD] Upload started");
+    request->send(200, "text/plain", "OK");
+  });
+
   if (!filesUploaded) {
 // Serve file upload page
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -265,7 +284,7 @@ void setup() {
         <body>
           <h2>Upload Files</h2>
           <form id="uploadForm" enctype="multipart/form-data">
-            <input type="file" id="fileInput" name="file" multiple><br><br>
+            <input type="file" id="fileInput" name="file" multiple>
             <input type="submit" value="Upload">
           </form>
           <div id="status"></div>
@@ -299,7 +318,9 @@ void setup() {
 
               xhr.onload = function() {
                 if (xhr.status === 200) {
-                  statusDiv.innerHTML = "Upload complete. <a href='/restart'>Restart Server</a>";
+                  statusDiv.innerHTML = `
+                  <img src="/restart" style="display:none" onerror=""/>
+                  <br>Restarting Server <BR><BR><a href="/">Click here to reload page and see your new index.html</a>.`;                 
                   fileInput.value = ""; // clear selected files
                 } else {
                   errorDiv.textContent = "Upload failed. Try again.";
@@ -309,7 +330,9 @@ void setup() {
               xhr.onerror = function() {
                 errorDiv.textContent = "Upload error. Check connection.";
               };
-
+              
+              fetch("/uploading"); // Inform ESP we're starting upload
+              console.log("Uploading files..."); // Debug to browser console
               xhr.send(formData);
             });
           </script>
