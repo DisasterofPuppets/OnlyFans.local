@@ -2,32 +2,7 @@
 WIP - Zapping bugs
 
 To Do
-MDNS
-SERVO
-
-* Window exhaust fan curtain control
-* This shoddily put together code creates a server on an ESP8266 via Http
-* that communicates with a Servo and toggles it between defined angles
-* Using ESP8266 NodeMCU 1.0 ESP-12
-* 2025 http://DisasterOfPuppets.com
-
-Shout out to TrachitZ for the Server and file upload functionality example https://www.youtube.com/watch?v=jzlNv83slz8
-
-
-Hardware list
-1 x 1N5822 Schottky diode
-1 x ESP8266 Microcontroller
-1 x DC Buck Converter (12v to 6V)
-2 x 1000 ohm Capacitors
-1 x Servo (DS3240 is my recommendation as it has some good torque)
-1 x 12V 3 Amp power source
-1 x 5V Power source (or  simply power via USB connection to the ESP8266)
------------------------------------------------------------------*/
-/* --------------------------------------------------------------  
-WIP - Zapping bugs
-
-To Do
-MDNS
+MDNS - nah shes fucked. use hack instead
 SERVO
 
 * Window exhaust fan curtain control
@@ -73,7 +48,7 @@ IPAddress local_IP(192, 168, 1, 19); // Change this to the IP address you want t
 IPAddress gateway(192, 168, 1, 1); // Your router's gateway
 IPAddress subnet(255, 255, 255, 0); 
 IPAddress dns(8, 8, 8, 8); // Optional, Google DNS
-constexpr bool USE_DNS = false; // true : On | false : Off
+constexpr bool USE_GOOGLE_DNS = false; // true : On | false : Off
 
 // Pin Assignments
 #define LED_PIN LED_BUILTIN    // GPIO2 — onboard blue LED
@@ -96,7 +71,7 @@ constexpr bool OPEN_ON_RUN = true; // Have the Servo open the curtain on power (
 
 //****************** WEB SERVER & FILE UPLOAD FUNCTIONS **********************
 // Create Server
-AsyncWebServer server(80);
+static AsyncWebServer server(80);
 
 // These use Serial print as they output and interact with the Serial monitor for file management
 
@@ -231,12 +206,13 @@ void setup() {
 
 //Initialize WiFi
 
-  if (USE_DNS) {
+
+  if (USE_GOOGLE_DNS) {
     WiFi.config(local_IP, gateway, subnet, dns);
   } else {
     WiFi.config(local_IP, gateway, subnet);
   }
-  
+    
   WiFi.begin(ssid, password);
   Serial.println(F("[WiFi] Connecting to SSID: ") + String(ssid));
   unsigned long start = millis();
@@ -355,7 +331,7 @@ void setup() {
       if (final) {
           request->_tempFile.close();
           LittleFS.open("/uploaded.flag", "w").close();
-          listFiles();
+          //listFiles();
       }
   });
     } else {
@@ -372,8 +348,8 @@ void setup() {
 
 // Start listening for HTTP requests
     server.begin();
-    Serial.print(F("[HTTP] Server started open a Browser to http://"));
-    Serial.println(WiFi.localIP());
+    Serial.println("[HTTP] Server running!!");
+    Serial.println("Open a Browser to http://" + WiFi.localIP().toString());
 
 }
 
