@@ -2,10 +2,7 @@
 WIP - Zapping bugs Don't forget to change the 'Erase Flash' setting to All Flash Contents' otherwise you will still see old files
 
 To Do
-Convert to allow HTML upload instead of using LittleFS upload function (doesn't work with new IDE, or at least I couldn't get it to)
 MDNS - nah shes fucked. use hosts method instead
-FETCH CURTAIN STATES / RTC - DONE
-SERIAL MONITOR - DONE
 SERVO
 REMOVE SHADOW ON SVG LOGO (may be in the Style.css)
 
@@ -52,8 +49,10 @@ bool isOpen = false;
 bool isMoving = false;
 unsigned long lastAlive = 0;
 
-int currentPulse = 0; // tracks last pulse sent to the servo
 
+int currentPulse = 0; // tracks last pulse sent to the servo
+bool pendingOpen = false;
+bool pendingClose = false;
 //**************ADJUST THESE SETTINGS FOR YOUR SETUP **************
 
 // -= WIFI SETTINGS =-
@@ -146,77 +145,36 @@ void handleRoot(AsyncWebServerRequest *request) {
     // Serve the uploaded index.html
     request->send(LittleFS, "/index.html", "text/html");
   } else {
-    // No files uploaded yet, serve the upload page
-    request->send(200, "text/html",
-    R"rawliteral(
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>Upload Files</title>
-        <style>
-          body { font-family: Arial; padding: 20px; }
-          #status { margin-top: 1em; color: green; }
-          #error { margin-top: 1em; color: red; }
-        </style>
-      </head>
-      <body>
-        <h2>Upload Files</h2>
-        <form id="uploadForm" enctype="multipart/form-data">
-          <input type="file" id="fileInput" name="file" multiple>
-          <input type="submit" value="Upload">
-        </form>
-        <div id="status"></div>
-        <div id="error"></div>
-
-        <script>
-          const form = document.getElementById('uploadForm');
-          const fileInput = document.getElementById('fileInput');
-          const statusDiv = document.getElementById('status');
-          const errorDiv = document.getElementById('error');
-
-          form.addEventListener('submit', function(event) {
-            event.preventDefault(); // prevent default form submission
-
-            if (!fileInput.files.length) {
-              errorDiv.textContent = "Please select files before uploading.";
-              statusDiv.textContent = "";
-              return;
-            }
-
-            errorDiv.textContent = "";
-            statusDiv.textContent = "Please wait, uploading files...";
-
-            const formData = new FormData();
-            for (let i = 0; i < fileInput.files.length; i++) {
-              formData.append("file", fileInput.files[i]);
-            }
-
-            const xhr = new XMLHttpRequest();
-            xhr.open("POST", "/upload", true);
-
-            xhr.onload = function() {
-              if (xhr.status === 200) {
-                statusDiv.innerHTML = `
-                <img src="/restart" style="display:none" onerror=""/>
-                <br>Restarting Server <BR><BR><a href="/">Click here to reload page and see your new index.html</a>.`;                 
-                fileInput.value = ""; // clear selected files
-              } else {
-                errorDiv.textContent = "Upload failed. Try again.";
-              }
-            };
-
-            xhr.onerror = function() {
-              errorDiv.textContent = "Upload error. Check connection.";
-            };
-            
-            fetch("/uploading"); // Inform ESP we're starting upload
-            console.log("Uploading files..."); // Debug to browser console
-            xhr.send(formData);
-          });
-        </script>
-      </body>
-    </html>
-    )rawliteral");
+    // Show upload interface with improved styling
+    String uploadPage = "<!DOCTYPE html><html><head><title>Curtain Controller - Upload Files</title>";
+    uploadPage += "<style>body{font-family:Arial,sans-serif;padding:20px;background-color:#f5f5f5;}";
+    uploadPage += ".container{max-width:600px;margin:0 auto;background:white;padding:30px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1);}";
+    uploadPage += "h2{color:#333;text-align:center;margin-bottom:30px;}";
+    uploadPage += ".upload-area{border:2px dashed #ccc;padding:40px;text-align:center;border-radius:10px;margin:20px 0;}";
+    uploadPage += ".upload-area:hover{border-color:#007bff;}";
+    uploadPage += "input[type=\"file\"]{margin:20px 0;}";
+    uploadPage += "input[type=\"submit\"]{background:#007bff;color:white;padding:12px 30px;border:none;border-radius:5px;cursor:pointer;font-size:16px;}";
+    uploadPage += "input[type=\"submit\"]:hover{background:#0056b3;}";
+    uploadPage += "#status{margin-top:1em;color:green;font-weight:bold;}";
+    uploadPage += "#error{margin-top:1em;color:red;font-weight:bold;}";
+    uploadPage += ".info{background:#e7f3ff;padding:15px;border-radius:5px;margin:20px 0;}</style></head>";
+    uploadPage += "<body><div class='container'><h2>Curtain Controller - Upload Web Files</h2>";
+    uploadPage += "<div class='info'><strong>First Time Setup:</strong><br><br>Upload your web interface files (index.html, style.css, script.js, etc.) to get started.</div>";
+    uploadPage += "<form id='uploadForm' method='POST' action='/upload' enctype='multipart/form-data'>";
+    uploadPage += "<div class='upload-area'><input type='file' id='fileInput' name='file' multiple accept='.html,.css,.js,.svg,.png,.jpg,.gif'><br><br>";
+    uploadPage += "<input type='submit' value='Upload Files'></div></form>";
+    uploadPage += "<div id='status'></div><div id='error'></div></div>";
+    uploadPage += "<script>const form=document.getElementById('uploadForm');const fileInput=document.getElementById('fileInput');";
+    uploadPage += "const statusDiv=document.getElementById('status');const errorDiv=document.getElementById('error');";
+    uploadPage += "form.addEventListener('submit',function(event){event.preventDefault();if(!fileInput.files.length){";
+    uploadPage += "errorDiv.textContent='Please select files before uploading.';statusDiv.textContent='';return;}";
+    uploadPage += "errorDiv.textContent='Uploading files, please wait...';";
+    uploadPage += "const formData=new FormData();for(let i=0;i<fileInput.files.length;i++){formData.append('file',fileInput.files[i]);}";
+    uploadPage += "const xhr=new XMLHttpRequest();xhr.open('POST','/upload',true);";
+    uploadPage += "xhr.onload=function(){if(xhr.status===200){statusDiv.textContent='Upload successful! Redirecting...';setTimeout(function(){window.location.href='/upload-complete';},1000);}else{errorDiv.textContent='Upload failed. Try again.';statusDiv.textContent='';}};"; 
+    uploadPage += "xhr.onerror=function(){errorDiv.textContent='Upload error. Check connection.';statusDiv.textContent='';};";
+    uploadPage += "xhr.send(formData);});</script></body></html>";
+    request->send(200, "text/html", uploadPage);
   }
 }
 
@@ -235,32 +193,20 @@ void handleRestart(AsyncWebServerRequest *request) {
 
 
 
-// Move the curtain to the open position
+
+
 void handleOpen(AsyncWebServerRequest *request) {
   Log("Curtain Open");
-//  myServo.attach(SERVO_PIN, SERVOMIN, SERVOMAX);
-//  isMoving = true;
-//  moveServoSmooth(constrain(OPEN_ANGLE, 0, 180));
-  Log("Moved to " + String(OPEN_ANGLE) + " degrees (" + String(currentPulse) + " µs)");
-//  delay(1000);
-//  myServo.detach();
-  isMoving = false;
-  isOpen = true;
-  request->send(200, "text/plain", "Curtain opened.");
+  pendingOpen = true;
+  isOpen = true; // Update state immediately for UI
+  request->send(200, "text/plain", "Curtain opening...");
 }
 
-// Move the curtain to the closed position
 void handleClose(AsyncWebServerRequest *request) {
   Log("Curtain Closed");
- // myServo.attach(SERVO_PIN, SERVOMIN, SERVOMAX);
-  //isMoving = true;
-  //moveServoSmooth(constrain(CLOSED_ANGLE, 0, 180));
-  Log("Moved to " + String(CLOSED_ANGLE) + " degrees (" + String(currentPulse) + " µs)");
-//  delay(1000);
-//  myServo.detach();
-  isMoving = false;
-  isOpen = false;
-  request->send(200, "text/html", "Curtain closed.");
+  pendingClose = true;
+  isOpen = false; // Update state immediately for UI
+  request->send(200, "text/html", "Curtain closing...");
 }
 
 // Initial servo homing cycle executed on power-up
@@ -391,7 +337,23 @@ currentPulse = angleToMicros(isOpen ? OPEN_ANGLE : CLOSED_ANGLE);
   } else {
     Log("[FS] LittleFS Mount Successful");
   }
-        
+
+
+server.on("/upload-complete", HTTP_GET, [](AsyncWebServerRequest *request){
+  String completePage = "<!DOCTYPE html><html><head><title>Upload Complete</title>";
+  completePage += "<style>body{font-family:Arial,sans-serif;padding:20px;background-color:#f5f5f5;}";
+  completePage += ".container{max-width:600px;margin:0 auto;background:white;padding:30px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1);text-align:center;}";
+  completePage += "h2{color:#28a745;margin-bottom:20px;}";
+  completePage += ".success{background:#d4edda;color:#155724;padding:15px;border-radius:5px;margin:20px 0;}";
+  completePage += ".btn{background:#007bff;color:white;padding:12px 30px;border:none;border-radius:5px;cursor:pointer;font-size:16px;text-decoration:none;display:inline-block;margin:10px;}";
+  completePage += ".btn:hover{background:#0056b3;}</style></head>";
+  completePage += "<body><div class='container'><h2>✓ Upload Complete!</h2>";
+  completePage += "<div class='success'>Files uploaded successfully!</div>";
+  completePage += "<p><a href='/restart' class='btn'>Restart Server</a></p>";
+  completePage += "<p><a href='/' class='btn'>Back to Main</a></p></div></body></html>";
+  request->send(200, "text/html", completePage);
+});
+
   server.on("/uploading", HTTP_GET, [](AsyncWebServerRequest *request) {
     Serial.println("[UPLOAD] Upload started");
     request->send(200, "text/plain", "OK");
@@ -400,22 +362,34 @@ currentPulse = angleToMicros(isOpen ? OPEN_ANGLE : CLOSED_ANGLE);
   // Always use handleRoot for the main page
   server.on("/", HTTP_GET, handleRoot);
 
-  // Handle file upload
-  server.on("/upload", HTTP_POST, [](AsyncWebServerRequest *request) {
-    request->send(200); // Return blank success for AJAX to catch
-  }, [](AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) {
-    if (!index) {
-      request->_tempFile = LittleFS.open("/" + filename, "w");
+// Handle file upload
+server.on("/upload", HTTP_POST, [](AsyncWebServerRequest *request) {
+  // Just send OK - let JavaScript handle the redirect
+  request->send(200, "text/plain", "OK");
+}, [](AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) {
+  if (!index) {
+    Serial.println("Starting upload: " + filename);
+    request->_tempFile = LittleFS.open("/" + filename, "w");
+    if (!request->_tempFile) {
+      Serial.println("Failed to open file for writing: " + filename);
+      return;
     }
-    if (len) {
-      request->_tempFile.write(data, len);
-    }
-    if (final) {
+  }
+  if (len && request->_tempFile) {
+    request->_tempFile.write(data, len);
+  }
+  if (final) {
+    if (request->_tempFile) {
       request->_tempFile.close();
-      LittleFS.open("/uploaded.flag", "w").close();
-      Serial.println("File uploaded: " + filename);
+      Serial.println("File uploaded successfully: " + filename);
     }
-  });
+    // Create a flag file to indicate successful upload
+    File flagFile = LittleFS.open("/upload_complete.flag", "w");
+    if (flagFile) {
+      flagFile.close();
+    }
+  }
+});
 
   // Serve other static files
   server.serveStatic("/", LittleFS, "/");
@@ -511,6 +485,29 @@ void moveServoSmooth(int targetAngle) {
 void loop() {
   MDNS.update();
   CheckWiFi();
+
+  // Handle pending servo movements (moved from HTTP handlers to prevent connection resets)
+  if (pendingOpen && !isMoving) {
+    pendingOpen = false;
+    isMoving = true;
+    myServo.attach(SERVO_PIN, SERVOMIN, SERVOMAX);
+    moveServoSmooth(constrain(OPEN_ANGLE, 0, 180));
+    Log("Moved to " + String(OPEN_ANGLE) + " degrees (" + String(currentPulse) + " µs)");
+    delay(1000);
+    myServo.detach();
+    isMoving = false;
+  }
+
+  if (pendingClose && !isMoving) {
+    pendingClose = false;
+    isMoving = true;
+    myServo.attach(SERVO_PIN, SERVOMIN, SERVOMAX);
+    moveServoSmooth(constrain(CLOSED_ANGLE, 0, 180));
+    Log("Moved to " + String(CLOSED_ANGLE) + " degrees (" + String(currentPulse) + " µs)");
+    delay(1000);
+    myServo.detach();
+    isMoving = false;
+  }
 
   unsigned long now = millis();
   if (now - lastAlive >= 20UL * 60UL * 1000UL) {  // 20 minutes
