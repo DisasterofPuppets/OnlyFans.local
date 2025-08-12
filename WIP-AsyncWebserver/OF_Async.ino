@@ -2,7 +2,10 @@
 WIP - Zapping bugs Don't forget to change the 'Erase Flash' setting to All Flash Contents' otherwise you will still see old files
 
 To Do
+Convert to allow HTML upload instead of using LittleFS upload function (doesn't work with new IDE, or at least I couldn't get it to)
 MDNS - nah shes fucked. use hosts method instead
+FETCH CURTAIN STATES / RTC - DONE
+SERIAL MONITOR - DONE
 SERVO
 REMOVE SHADOW ON SVG LOGO (may be in the Style.css)
 
@@ -347,10 +350,9 @@ server.on("/upload-complete", HTTP_GET, [](AsyncWebServerRequest *request){
   completePage += ".success{background:#d4edda;color:#155724;padding:15px;border-radius:5px;margin:20px 0;}";
   completePage += ".btn{background:#007bff;color:white;padding:12px 30px;border:none;border-radius:5px;cursor:pointer;font-size:16px;text-decoration:none;display:inline-block;margin:10px;}";
   completePage += ".btn:hover{background:#0056b3;}</style></head>";
-  completePage += "<body><div class='container'><h2>✓ Upload Complete!</h2>";
+  completePage += "<body><div class='container'><h2>Upload Complete!</h2>";
   completePage += "<div class='success'>Files uploaded successfully!</div>";
-  completePage += "<p><a href='/restart' class='btn'>Restart Server</a></p>";
-  completePage += "<p><a href='/' class='btn'>Back to Main</a></p></div></body></html>";
+  completePage += "<p><a href='/' class='btn'>Load your new main page!</a></p></div></body></html>";
   request->send(200, "text/html", completePage);
 });
 
