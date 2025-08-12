@@ -1,20 +1,20 @@
 /* --------------------------------------------------------------  
-WIP - Zapping bugs
+WIP - Zapping bugs Don't forget to change the 'Erase Flash' setting to All Flash Contents' otherwise you will still see old files
 
 To Do
-MDNS - nah shes fucked. use hack instead
+Convert to allow HTML upload instead of using LittleFS upload function (doesn't work with new IDE, or at least I couldn't get it to)
+MDNS - nah shes fucked. use hosts method instead
 FETCH CURTAIN STATES / RTC - DONE
 SERIAL MONITOR - DONE
 SERVO
-REMOVE SHADOW ON SVG LOGO (may be in the Style.css) - Done, think it was just my eyes
+REMOVE SHADOW ON SVG LOGO (may be in the Style.css)
+
 
 * Window exhaust fan curtain control
 * This shoddily put together code creates a server on an ESP8266 via Http
 * that communicates with a Servo and toggles it between defined angles
-* Using ESP8266 NodeMCU 1.0 ESP-12
+* Using ESP8266 NodeMCU ESP-12
 * 2025 http://DisasterOfPuppets.com
-
-Shout out to TrachitZ for the Server and file upload functionality example https://www.youtube.com/watch?v=jzlNv83slz8
 
 
 Hardware list
@@ -26,14 +26,15 @@ Hardware list
 1 x 12V 3 Amp power source
 1 x 5V Power source (or  simply power via USB connection to the ESP8266)
 -----------------------------------------------------------------*/
-#include <Arduino.h>
+
 #include <ESP8266WiFi.h>
+#include <ESP8266mDNS.h>
 #include <LittleFS.h>
+#include <Servo.h>
 #include <ESPAsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <user_interface.h>
-
-//Required Variables **********************************************
+#define LOG_BUFFER_SIZE 2048
 
 // Structure stored in RTC memory to remember the curtain state across resets
 struct RTCData {
@@ -45,37 +46,27 @@ RTCData rtcData;
 uint32_t RTC_MEM_START = 65;
 
 // Runtime flags and state
-
-#define LOG_BUFFER_SIZE 1024
+bool skipStartupMovement = false;
 String logBuffer = "";
-int currentPulse = 0; // tracks last pulse sent to the servo
-unsigned long lastAlive = 0;
 bool isOpen = false;
 bool isMoving = false;
-bool skipStartupMovement = false;
+unsigned long lastAlive = 0;
 
-
+int currentPulse = 0; // tracks last pulse sent to the servo
 
 //**************ADJUST THESE SETTINGS FOR YOUR SETUP **************
 
-// Wi-Fi Credentials
-const char* ssid = "YOURBANK";
-const char* password = "DETAILSHERE";
+// -= WIFI SETTINGS =-
 
-// -= SERVER SETTINGS =-  (network configuration for the HTTP server)
+// Wi-Fi credentials (replace with your network details)
 
-IPAddress local_IP(192, 168, 1, 19); // Change this to the IP address you want to use for the server
-IPAddress gateway(192, 168, 1, 1); // Your router's gateway
-IPAddress subnet(255, 255, 255, 0); 
-IPAddress dns(8, 8, 8, 8); // Optional, Google DNS
-constexpr bool USE_GOOGLE_DNS = false; // true : On | false : Off
-
-// Pin Assignments
-#define LED_PIN LED_BUILTIN    // GPIO2 — onboard blue LED
-#define SERVO_PIN 13           // D7 GPIO13 — safe for servo PWM
+const char* ssid = "YourBank";
+const char* password = "DetailsHere";
 
 // -= SERVO SETTINGS =-  (adjust to match your hardware)
 
+#define SERVO_PIN 13           // D7 GPIO13 — safe for servo PWM
+#define LED_PIN LED_BUILTIN    // GPIO2 — onboard blue LED
 constexpr int SERVOMIN = 600;  // Min pulse width in µs. DO NOT modify unless calibrating manually.
 constexpr int SERVOMAX = 2400; // Max pulse width in µs. See GitHub readme for safe tuning instructions.
 constexpr int CLOSED_ANGLE = 0; // Angle of the Servo when curtain is closed (With our 3 gears turns the Door Anticlockwise)
@@ -88,6 +79,18 @@ constexpr bool OPEN_ON_RUN = true; // Have the Servo open the curtain on power (
 #define SERVO_STEP_SIZE 5          // [Was 40 wayy too fast] Microseconds per step. Smaller = smoother and slower movement.
 // If your servo starts stuttering or twitching: try increasing SERVO_STEP_SIZE or reducing SERVO_SPEED_DELAY.
 // Stuttering typically means the servo isn't receiving fast enough or large enough signal changes to move cleanly.
+
+
+// -= SERVER SETTINGS =-  (network configuration for the HTTP server)
+
+IPAddress local_IP(192, 168, 1, 19); // Change this to the IP address you want to use for the server
+IPAddress gateway(192, 168, 1, 1); // Your router's gateway
+IPAddress subnet(255, 255, 255, 0); 
+IPAddress dns(8, 8, 8, 8); // Optional, Google DNS
+constexpr bool USE_GOOGLE_DNS = false; // true : On | false : Off
+
+//*****************************************************************
+
 
 //****************** WEB SERVER & FILE UPLOAD FUNCTIONS **********************
 // Create Server
@@ -129,26 +132,95 @@ void CMDRestart() {
   ESP.restart();
 }
 
-
-//*********************** LOGGING FUNCTION ****************
-
-// Append a message to the log and keep the buffer within limits
-// Required to store variable in memory to flag software restart
-
-void Log(const String& msg) {
-  if (msg.length() == 0) return; // ignore empty logs
-  Serial.println(msg); 
-  logBuffer += msg + "\n";
-  if (logBuffer.length() > LOG_BUFFER_SIZE) {
-    logBuffer = logBuffer.substring(logBuffer.length() - LOG_BUFFER_SIZE); // trim oldest
-  }
-}
-
+Servo myServo; //initialize Servo
 
 //****************** HANDLER FUNCTIONS **********************
 
-// Handles any restart requests from the server
+// Serve the main interface page
+void handleRoot(AsyncWebServerRequest *request) {
+  IPAddress clientIP = request->client()->remoteIP();
+  Log("HTTP connection detected from: " + clientIP.toString());
+  
+  // Check if files have been uploaded
+  if (LittleFS.exists("/index.html")) {
+    // Serve the uploaded index.html
+    request->send(LittleFS, "/index.html", "text/html");
+  } else {
+    // No files uploaded yet, serve the upload page
+    request->send(200, "text/html",
+    R"rawliteral(
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Upload Files</title>
+        <style>
+          body { font-family: Arial; padding: 20px; }
+          #status { margin-top: 1em; color: green; }
+          #error { margin-top: 1em; color: red; }
+        </style>
+      </head>
+      <body>
+        <h2>Upload Files</h2>
+        <form id="uploadForm" enctype="multipart/form-data">
+          <input type="file" id="fileInput" name="file" multiple>
+          <input type="submit" value="Upload">
+        </form>
+        <div id="status"></div>
+        <div id="error"></div>
 
+        <script>
+          const form = document.getElementById('uploadForm');
+          const fileInput = document.getElementById('fileInput');
+          const statusDiv = document.getElementById('status');
+          const errorDiv = document.getElementById('error');
+
+          form.addEventListener('submit', function(event) {
+            event.preventDefault(); // prevent default form submission
+
+            if (!fileInput.files.length) {
+              errorDiv.textContent = "Please select files before uploading.";
+              statusDiv.textContent = "";
+              return;
+            }
+
+            errorDiv.textContent = "";
+            statusDiv.textContent = "Please wait, uploading files...";
+
+            const formData = new FormData();
+            for (let i = 0; i < fileInput.files.length; i++) {
+              formData.append("file", fileInput.files[i]);
+            }
+
+            const xhr = new XMLHttpRequest();
+            xhr.open("POST", "/upload", true);
+
+            xhr.onload = function() {
+              if (xhr.status === 200) {
+                statusDiv.innerHTML = `
+                <img src="/restart" style="display:none" onerror=""/>
+                <br>Restarting Server <BR><BR><a href="/">Click here to reload page and see your new index.html</a>.`;                 
+                fileInput.value = ""; // clear selected files
+              } else {
+                errorDiv.textContent = "Upload failed. Try again.";
+              }
+            };
+
+            xhr.onerror = function() {
+              errorDiv.textContent = "Upload error. Check connection.";
+            };
+            
+            fetch("/uploading"); // Inform ESP we're starting upload
+            console.log("Uploading files..."); // Debug to browser console
+            xhr.send(formData);
+          });
+        </script>
+      </body>
+    </html>
+    )rawliteral");
+  }
+}
+
+// Handles any restart requests from the server
 void handleRestart(AsyncWebServerRequest *request) {
   
   rtcData.magic = 0xCAFEBABE;
@@ -160,6 +232,8 @@ void handleRestart(AsyncWebServerRequest *request) {
   delay(500);
   ESP.restart();
 }
+
+
 
 // Move the curtain to the open position
 void handleOpen(AsyncWebServerRequest *request) {
@@ -189,8 +263,32 @@ void handleClose(AsyncWebServerRequest *request) {
   request->send(200, "text/html", "Curtain closed.");
 }
 
+// Initial servo homing cycle executed on power-up
+void RunStartupMovement() {
+  Serial.println("Initialising...");
+  
+  Log("Attaching servo...");
+  myServo.attach(SERVO_PIN, SERVOMIN, SERVOMAX);
+  isMoving = true;
 
-//****************** RECEONNECT WIFI FUNCTION **********************
+  // Slowly home to closed position
+  Log("Homing to CLOSED...");
+  moveServoSmooth(constrain(CLOSED_ANGLE, 0, 180));
+  Log("Homed to " + String(CLOSED_ANGLE) + " degrees (" + String(currentPulse) + " µs)");
+  delay(500);
+
+  // Then open smoothly
+  moveServoSmooth(constrain(OPEN_ANGLE, 0, 180));
+  Log("Moved to " + String(OPEN_ANGLE) + " degrees (" + String(currentPulse) + " µs)");
+  delay(500);
+
+  isOpen = true;
+  isMoving = false;
+  myServo.detach();
+  Log("PWM detached");
+}
+
+//****************** RECONNECT WIFI FUNCTION **********************
 
 // Reconnect if Wi-Fi drops
 void CheckWifi() {
@@ -216,13 +314,20 @@ void CheckWifi() {
   }
 }
 
-//====================================================== SETUP ======================================================
+// Helper to convert an angle (0-180°) into the corresponding pulse width
+inline int angleToMicros(int angle) {
+  return map(angle, 0, 180, SERVOMIN, SERVOMAX);
+}
+
+//================================================================= SETUP ================================================================
 
 void setup() {
-    Serial.begin(115200);
-    delay(1000);  // Give USB serial time to come online
-    Serial.println();
-    Serial.println(F("=== Booting ESP8266 Curtain Controller ==="));
+
+  Serial.begin(115200);
+  delay(1000);  // Give USB serial time to come online
+  Serial.println();
+  Serial.println(F("=== Booting ESP8266 Curtain Controller ==="));
+
 
 //Initialize pins
   
@@ -243,9 +348,13 @@ void setup() {
     system_rtc_mem_write(RTC_MEM_START, &rtcData, sizeof(rtcData));
   }
 
+// Initialize currentPulse based on current/restored state
+currentPulse = angleToMicros(isOpen ? OPEN_ANGLE : CLOSED_ANGLE);
+
+  Log("Booting...");
+
 
 //Initialize WiFi
-
 
   if (USE_GOOGLE_DNS) {
     WiFi.config(local_IP, gateway, subnet, dns);
@@ -266,6 +375,15 @@ void setup() {
     Log("[WiFi] Failed or timed out");
   }
 
+  // Initialize mDNS
+  if (MDNS.begin("onlyfans")) {
+    Log("mDNS responder started");
+    Log("Try visiting: http://onlyfans.local");
+  } else {
+    Log("mDNS setup failed");
+  }
+
+
 // Initialize File System
   bool fsMounted = LittleFS.begin();
   if (!fsMounted) {
@@ -274,112 +392,35 @@ void setup() {
     Log("[FS] LittleFS Mount Successful");
   }
         
-// Check if files are already uploaded
-  bool filesUploaded = LittleFS.exists("/uploaded.flag");
-
   server.on("/uploading", HTTP_GET, [](AsyncWebServerRequest *request) {
     Serial.println("[UPLOAD] Upload started");
     request->send(200, "text/plain", "OK");
   });
 
-  if (!filesUploaded) {
-// Serve file upload page
-    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-      request->send(200, "text/html",
-      R"rawliteral(
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Upload Files</title>
-          <style>
-            body { font-family: Arial; padding: 20px; }
-            #status { margin-top: 1em; color: green; }
-            #error { margin-top: 1em; color: red; }
-          </style>
-        </head>
-        <body>
-          <h2>Upload Files</h2>
-          <form id="uploadForm" enctype="multipart/form-data">
-            <input type="file" id="fileInput" name="file" multiple>
-            <input type="submit" value="Upload">
-          </form>
-          <div id="status"></div>
-          <div id="error"></div>
+  // Always use handleRoot for the main page
+  server.on("/", HTTP_GET, handleRoot);
 
-          <script>
-            const form = document.getElementById('uploadForm');
-            const fileInput = document.getElementById('fileInput');
-            const statusDiv = document.getElementById('status');
-            const errorDiv = document.getElementById('error');
-
-            form.addEventListener('submit', function(event) {
-              event.preventDefault(); // prevent default form submission
-
-              if (!fileInput.files.length) {
-                errorDiv.textContent = "Please select files before uploading.";
-                statusDiv.textContent = "";
-                return;
-              }
-
-              errorDiv.textContent = "";
-              statusDiv.textContent = "Please wait, uploading files...";
-
-              const formData = new FormData();
-              for (let i = 0; i < fileInput.files.length; i++) {
-                formData.append("file", fileInput.files[i]);
-              }
-
-              const xhr = new XMLHttpRequest();
-              xhr.open("POST", "/upload", true);
-
-              xhr.onload = function() {
-                if (xhr.status === 200) {
-                  statusDiv.innerHTML = `
-                  <img src="/restart" style="display:none" onerror=""/>
-                  <br>Restarting Server <BR><BR><a href="/">Click here to reload page and see your new index.html</a>.`;                 
-                  fileInput.value = ""; // clear selected files
-                } else {
-                  errorDiv.textContent = "Upload failed. Try again.";
-                }
-              };
-
-              xhr.onerror = function() {
-                errorDiv.textContent = "Upload error. Check connection.";
-              };
-              
-              fetch("/uploading"); // Inform ESP we're starting upload
-              console.log("Uploading files..."); // Debug to browser console
-              xhr.send(formData);
-            });
-          </script>
-        </body>
-      </html>
-      )rawliteral");
-
-          });
-
-// Handle file upload
+  // Handle file upload
   server.on("/upload", HTTP_POST, [](AsyncWebServerRequest *request) {
-      request->send(200); // Return blank success for AJAX to catch
+    request->send(200); // Return blank success for AJAX to catch
   }, [](AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) {
-      if (!index) {
-          request->_tempFile = LittleFS.open("/" + filename, "w");
-      }
-      if (len) {
-          request->_tempFile.write(data, len);
-      }
-      if (final) {
-          request->_tempFile.close();
-          LittleFS.open("/uploaded.flag", "w").close();
-          //listFiles();
-      }
-  });
-    } else {
-// Serve files from the filesystem
-      server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
+    if (!index) {
+      request->_tempFile = LittleFS.open("/" + filename, "w");
     }
+    if (len) {
+      request->_tempFile.write(data, len);
+    }
+    if (final) {
+      request->_tempFile.close();
+      LittleFS.open("/uploaded.flag", "w").close();
+      Serial.println("File uploaded: " + filename);
+    }
+  });
 
-    server.onNotFound(notFound);
+  // Serve other static files
+  server.serveStatic("/", LittleFS, "/");
+
+  server.onNotFound(notFound);
 
 // Endpoints that control the curtain and expose status/logs
   server.on("/curtain-status", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -390,24 +431,86 @@ void setup() {
   server.on("/close", handleClose);
   server.on("/restart", handleRestart);
   server.on("/log", HTTP_GET, [](AsyncWebServerRequest *request){
-  if (logBuffer.length() == 0) {
-    request->send(200, "text/plain", "No log data available yet...\n");
-  } else {
-    request->send(200, "text/plain", logBuffer);
-  }
-});
+    if (logBuffer.length() == 0) {
+      request->send(200, "text/plain", "No log data available yet...\n");
+    } else {
+      request->send(200, "text/plain", logBuffer);
+    }
+  });
 
 // Start listening for HTTP requests
-    server.begin();
-    Serial.println("[HTTP] Server running!!");
-    Serial.println("Open a Browser to http://" + WiFi.localIP().toString());
+  server.begin();
+  Serial.println("[HTTP] Server running!!");
+  Serial.println("Open a Browser to http://" + WiFi.localIP().toString());
 
 }
 
-//====================================================== MAIN LOOP ======================================================
+
+//=============================================== END SETUP ================================================================
+
+
+
+//**************************************************** FUNCTIONS ***********************************************************
+
+// Append a message to the log and keep the buffer within limits
+
+void Log(const String& msg) {
+  if (msg.length() == 0) return; // ignore empty logs
+  Serial.println(msg); 
+  logBuffer += msg + "\n";
+  if (logBuffer.length() > LOG_BUFFER_SIZE) {
+    logBuffer = logBuffer.substring(logBuffer.length() - LOG_BUFFER_SIZE); // trim oldest
+  }
+}
+
+// Reconnect if Wi-Fi drops
+void CheckWiFi() {
+  static unsigned long lastCheck = 0;
+  if (millis() - lastCheck < 5000) return; // Check every 5 seconds
+  lastCheck = millis();
+  if (WiFi.status() != WL_CONNECTED) {
+    Log("[WiFi] Disconnected. Attempting reconnect...");
+    WiFi.disconnect();
+    WiFi.begin(ssid, password);
+    unsigned long start = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - start < 10000) {
+      delay(100);
+      yield(); // Prevent watchdog reset
+    }
+    if (WiFi.status() == WL_CONNECTED) {
+      Log("\nWi-Fi Reconnected!");
+      Log("IP address: " + WiFi.localIP().toString());
+      digitalWrite(LED_PIN, HIGH);
+    } else {
+      Log("Wi-Fi Reconnect failed!");
+    }
+  }
+}
+
+// Interpolate servo position in microsecond steps for smooth motion
+void moveServoSmooth(int targetAngle) {
+  int targetPulse = angleToMicros(targetAngle);
+  if (targetPulse == currentPulse) return;
+
+  int step = (targetPulse > currentPulse) ? SERVO_STEP_SIZE : -SERVO_STEP_SIZE;
+  while (currentPulse != targetPulse) {
+    currentPulse += step;
+    if ((step > 0 && currentPulse > targetPulse) ||
+        (step < 0 && currentPulse < targetPulse)) {
+      currentPulse = targetPulse;
+    }
+    myServo.writeMicroseconds(currentPulse);
+    delay(SERVO_SPEED_DELAY);
+  }
+}
+
+//**************************************************** END FUNCTIONS ***********************************************************
+
+
+//--------------------------------------------------------------------MAIN LOOP ---------------------------------------------------------------------------
 void loop() {
-    
-    CheckWifi();
+  MDNS.update();
+  CheckWiFi();
 
   unsigned long now = millis();
   if (now - lastAlive >= 20UL * 60UL * 1000UL) {  // 20 minutes
@@ -417,17 +520,5 @@ void loop() {
     digitalWrite(LED_PIN, HIGH);  // OFF
     lastAlive = now;
   }
-
-    if (Serial.available()) {
-        String command = Serial.readStringUntil('\n');
-        command.trim();
-        if (command.startsWith("delete ")) {
-            String filename = command.substring(7);
-            deleteFile(filename.c_str());
-        } else if (command == "format") {
-            formatFS();
-        } else if (command == "restart") {
-            CMDRestart();
-        }
-    }
 }
+//-------------------------------------------------------------------END MAIN LOOP -------------------------------------------------------------------------
