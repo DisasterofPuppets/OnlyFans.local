@@ -30,7 +30,7 @@ Hardware list
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <LittleFS.h>
-#include <Servo.h>
+//#include <Servo.h>
 #include <ESPAsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <user_interface.h>
@@ -57,8 +57,6 @@ int currentPulse = 0; // tracks last pulse sent to the servo
 bool pendingOpen = false;
 bool pendingClose = false;
 //**************ADJUST THESE SETTINGS FOR YOUR SETUP **************
-
-// -= WIFI SETTINGS =-
 
 // Wi-Fi credentials (replace with your network details)
 
@@ -134,7 +132,7 @@ void CMDRestart() {
   ESP.restart();
 }
 
-Servo myServo; //initialize Servo
+//Servo myServo; //initialize Servo
 
 //****************** HANDLER FUNCTIONS **********************
 
@@ -216,25 +214,19 @@ void handleClose(AsyncWebServerRequest *request) {
 void RunStartupMovement() {
   Serial.println("Initialising...");
   
-  Log("Attaching servo...");
-  myServo.attach(SERVO_PIN, SERVOMIN, SERVOMAX);
+  Log("Simulating servo attachment...");
   isMoving = true;
 
-  // Slowly home to closed position
-  Log("Homing to CLOSED...");
-  moveServoSmooth(constrain(CLOSED_ANGLE, 0, 180));
-  Log("Homed to " + String(CLOSED_ANGLE) + " degrees (" + String(currentPulse) + " µs)");
+  Log("Simulating homing to CLOSED...");
+  Log("Simulating smooth movement to " + String(CLOSED_ANGLE) + " degrees");
   delay(500);
 
-  // Then open smoothly
-  moveServoSmooth(constrain(OPEN_ANGLE, 0, 180));
-  Log("Moved to " + String(OPEN_ANGLE) + " degrees (" + String(currentPulse) + " µs)");
+  Log("Simulating smooth movement to " + String(OPEN_ANGLE) + " degrees");
   delay(500);
 
   isOpen = true;
   isMoving = false;
-  myServo.detach();
-  Log("PWM detached");
+  Log("Simulating PWM detach");
 }
 
 //****************** RECONNECT WIFI FUNCTION **********************
@@ -277,6 +269,10 @@ void setup() {
   Serial.println();
   Serial.println(F("=== Booting ESP8266 Curtain Controller ==="));
 
+// Increase upload timeout and buffer size
+  WiFi.setPhyMode(WIFI_PHY_MODE_11N);  // Use 802.11n for better performance
+  system_soft_wdt_stop();              // Disable software watchdog during uploads
+
 
 //Initialize pins
   
@@ -310,7 +306,10 @@ currentPulse = angleToMicros(isOpen ? OPEN_ANGLE : CLOSED_ANGLE);
   } else {
     WiFi.config(local_IP, gateway, subnet);
   }
-    
+
+// Increase upload timeout and buffer size
+  WiFi.setPhyMode(WIFI_PHY_MODE_11N);  // Use 802.11n for better performance
+
   WiFi.begin(ssid, password);
   Serial.println(F("[WiFi] Connecting to SSID: ") + String(ssid));
   unsigned long start = millis();
@@ -366,26 +365,35 @@ server.on("/upload-complete", HTTP_GET, [](AsyncWebServerRequest *request){
 
 // Handle file upload
 server.on("/upload", HTTP_POST, [](AsyncWebServerRequest *request) {
-  // Just send OK - let JavaScript handle the redirect
   request->send(200, "text/plain", "OK");
 }, [](AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) {
+  static unsigned long lastYield = 0;
+  
   if (!index) {
     Serial.println("Starting upload: " + filename);
+    Serial.printf("Free heap before upload: %d bytes\n", ESP.getFreeHeap());
     request->_tempFile = LittleFS.open("/" + filename, "w");
     if (!request->_tempFile) {
       Serial.println("Failed to open file for writing: " + filename);
       return;
     }
   }
+  
   if (len && request->_tempFile) {
     request->_tempFile.write(data, len);
+    // Yield control frequently during upload to prevent watchdog reset
+    if (millis() - lastYield > 10) {
+      yield();
+      lastYield = millis();
+    }
   }
+  
   if (final) {
     if (request->_tempFile) {
       request->_tempFile.close();
-      Serial.println("File uploaded successfully: " + filename);
+      Serial.printf("File uploaded successfully: %s\n", filename.c_str());
+      Serial.printf("Free heap after upload: %d bytes\n", ESP.getFreeHeap());
     }
-    // Create a flag file to indicate successful upload
     File flagFile = LittleFS.open("/upload_complete.flag", "w");
     if (flagFile) {
       flagFile.close();
@@ -416,6 +424,7 @@ server.on("/upload", HTTP_POST, [](AsyncWebServerRequest *request) {
 
 // Start listening for HTTP requests
   server.begin();
+  system_soft_wdt_restart();  // Re-enable watchdog
   Serial.println("[HTTP] Server running!!");
   Serial.println("Open a Browser to http://" + WiFi.localIP().toString());
 
@@ -442,7 +451,7 @@ void Log(const String& msg) {
 // Reconnect if Wi-Fi drops
 void CheckWiFi() {
   static unsigned long lastCheck = 0;
-  if (millis() - lastCheck < 5000) return; // Check every 5 seconds
+  if (millis() - lastCheck < 30000) return; // Check every 30 seconds
   lastCheck = millis();
   if (WiFi.status() != WL_CONNECTED) {
     Log("[WiFi] Disconnected. Attempting reconnect...");
@@ -463,22 +472,22 @@ void CheckWiFi() {
   }
 }
 
-// Interpolate servo position in microsecond steps for smooth motion
-void moveServoSmooth(int targetAngle) {
-  int targetPulse = angleToMicros(targetAngle);
-  if (targetPulse == currentPulse) return;
+// // Interpolate servo position in microsecond steps for smooth motion
+// void moveServoSmooth(int targetAngle) {
+//   int targetPulse = angleToMicros(targetAngle);
+//   if (targetPulse == currentPulse) return;
 
-  int step = (targetPulse > currentPulse) ? SERVO_STEP_SIZE : -SERVO_STEP_SIZE;
-  while (currentPulse != targetPulse) {
-    currentPulse += step;
-    if ((step > 0 && currentPulse > targetPulse) ||
-        (step < 0 && currentPulse < targetPulse)) {
-      currentPulse = targetPulse;
-    }
-    myServo.writeMicroseconds(currentPulse);
-    delay(SERVO_SPEED_DELAY);
-  }
-}
+//   int step = (targetPulse > currentPulse) ? SERVO_STEP_SIZE : -SERVO_STEP_SIZE;
+//   while (currentPulse != targetPulse) {
+//     currentPulse += step;
+//     if ((step > 0 && currentPulse > targetPulse) ||
+//         (step < 0 && currentPulse < targetPulse)) {
+//       currentPulse = targetPulse;
+//     }
+//     myServo.writeMicroseconds(currentPulse);
+//     delay(SERVO_SPEED_DELAY);
+//   }
+// }
 
 //**************************************************** END FUNCTIONS ***********************************************************
 
@@ -488,26 +497,23 @@ void loop() {
   MDNS.update();
   CheckWiFi();
 
-  // Handle pending servo movements (moved from HTTP handlers to prevent connection resets)
   if (pendingOpen && !isMoving) {
     pendingOpen = false;
     isMoving = true;
-    myServo.attach(SERVO_PIN, SERVOMIN, SERVOMAX);
-    moveServoSmooth(constrain(OPEN_ANGLE, 0, 180));
-    Log("Moved to " + String(OPEN_ANGLE) + " degrees (" + String(currentPulse) + " µs)");
+    Log("Simulating servo attach for OPEN command");
+    Log("Simulating smooth movement to " + String(OPEN_ANGLE) + " degrees (" + String(currentPulse) + " µs)");
     delay(1000);
-    myServo.detach();
+    Log("Simulating servo detach");
     isMoving = false;
   }
 
   if (pendingClose && !isMoving) {
     pendingClose = false;
     isMoving = true;
-    myServo.attach(SERVO_PIN, SERVOMIN, SERVOMAX);
-    moveServoSmooth(constrain(CLOSED_ANGLE, 0, 180));
-    Log("Moved to " + String(CLOSED_ANGLE) + " degrees (" + String(currentPulse) + " µs)");
+    Log("Simulating servo attach for CLOSE command");
+    Log("Simulating smooth movement to " + String(CLOSED_ANGLE) + " degrees (" + String(currentPulse) + " µs)");
     delay(1000);
-    myServo.detach();
+    Log("Simulating servo detach");
     isMoving = false;
   }
 
@@ -520,4 +526,4 @@ void loop() {
     lastAlive = now;
   }
 }
-//-------------------------------------------------------------------END MAIN LOOP -------------------------------------------------------------------------
+//-------------------------------------------------------------------END MAIN LOOP -------------------------------------------------------------------------s
