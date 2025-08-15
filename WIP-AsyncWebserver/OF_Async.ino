@@ -97,7 +97,6 @@ if (USE_DNS) {
   WiFi.config(local_IP, gateway, subnet);
 }
   
-  WiFi.setSleepMode(WIFI_NONE_SLEEP); 
   WiFi.begin(ssid, password);
   Serial.print("Connecting to Wi-Fi");
 
@@ -112,7 +111,7 @@ if (USE_DNS) {
 
   Log("\nWi-Fi connected!");
   Log("IP address: ");
-  Log(WiFi.localIP().toString()); // ✅ Now it's a String
+  Log(WiFi.localIP().toString()); // Now it's a String
   digitalWrite(LED_PIN, HIGH); // OFF
 
   // mDNS setup
