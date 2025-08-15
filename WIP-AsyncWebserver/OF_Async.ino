@@ -28,11 +28,10 @@ String logBuffer = "";
 bool isOpen = false;
 bool isMoving = false;
 unsigned long lastAlive = 0;
-
+int currentPulse; //to Track the servo's last position in µs
 //**************ADJUST THESE SETTINGS FOR YOUR SETUP **************
 
 // -= WIFI SETTINGS =-
-
 const char* ssid = "YOUR_BANK";
 const char* password = "DETAILS_HERE";
 
@@ -47,8 +46,8 @@ constexpr int OPEN_ANGLE = 110; // Angle of the Servo when the door is open, adj
 constexpr bool OPEN_ON_RUN = true; // Have the Servo open the door on power (this won't re-run on manual software reset)
 
 // Tuning values for smooth motion
-#define STEP_US 50          // Microsecond step size for interpolation
-#define STEP_DELAY 2        // Delay in milliseconds between steps
+#define STEP_US 50          // Microsecond step size for interpolation (Smaller number = smoother motion)
+#define STEP_DELAY 10        // Delay in milliseconds between steps (Larger number = SLOWER motion)
 
 // -= SERVER SETTINGS =-
 
@@ -64,9 +63,14 @@ ESP8266WebServer server(80);
 Servo myServo;
 
 void setup() {
+  //Sanity delay
+  delay(1000);
+  
+  //clear the log buffer to ensure a clean slate on every boot.
+  logBuffer = ""; 
   
   Serial.begin(115200);
-
+  currentPulse = angleToMicros(CLOSED_ANGLE); 
 //reads the system memory states
   system_rtc_mem_read(RTC_MEM_START, &rtcData, sizeof(rtcData));
   
@@ -93,6 +97,7 @@ if (USE_DNS) {
   WiFi.config(local_IP, gateway, subnet);
 }
   
+  WiFi.setSleepMode(WIFI_NONE_SLEEP); 
   WiFi.begin(ssid, password);
   Serial.print("Connecting to Wi-Fi");
 
@@ -166,9 +171,8 @@ if (USE_DNS) {
 
   // Startup movement only runs if the server is not hard reset
   if (!skipStartupMovement) {
-    Log("Running servo startup routines....");
-    if (OPEN_ON_RUN == true) { // Check the user defined option
-      RunStartupMovement();
+      if (OPEN_ON_RUN == true) { // Check the user defined option
+        RunStartupMovement();
     }
   } else {
     Log("User initiated server restart");  
@@ -222,29 +226,25 @@ void handleRoot() {
 }
 
 void handleOpen() {
-  Log("Door Open");
-  myServo.attach(SERVO_PIN);
-  isMoving = true;
-  int openpulse = angleToMicros(constrain(OPEN_ANGLE, 0, 180));
-  myServo.writeMicroseconds(openpulse);
-  Log("Moved to " + String(OPEN_ANGLE) + " degrees (" + String(openpulse) + " µs)");
-  delay(500);
-  myServo.detach();
-  isMoving = false;
+  Log("Request: Open Door");
+  if (isOpen) {
+    Log("Door is already open.");
+    server.send(200, "text/plain", "Door already open.");
+    return;
+  }
+  moveServoSmoothly(OPEN_ANGLE);
   isOpen = true;
   server.send(200, "text/plain", "Door Open.");
 }
 
 void handleClose() {
-  Log("Door Closed");
-  myServo.attach(SERVO_PIN);
-  isMoving = true;
-  int closedpulse = angleToMicros(constrain(CLOSED_ANGLE, 0, 180));
-  myServo.writeMicroseconds(closedpulse);
-  Log("Moved to " + String(CLOSED_ANGLE) + " degrees (" + String(closedpulse) + " µs)");
-    delay(500);
-  myServo.detach();
-  isMoving = false;
+  Log("Request: Close Door");
+  if (!isOpen) {
+    Log("Door is already closed.");
+    server.send(200, "text/plain", "Door already closed.");
+    return;
+  }
+  moveServoSmoothly(CLOSED_ANGLE);
   isOpen = false;
   server.send(200, "text/plain", "Door Closed.");
 }
@@ -261,29 +261,56 @@ void handleRestart() {
   ESP.restart();
 }
 
-void RunStartupMovement() {
-  Serial.println("Initialising...");  // Display init message to serial
-
-  Log("Attaching servo...");
+void moveServoSmoothly(int targetAngle) {
   myServo.attach(SERVO_PIN);
   isMoving = true;
 
-  int closedpulse = angleToMicros(constrain(CLOSED_ANGLE, 0, 180));
-  myServo.writeMicroseconds(closedpulse);
-  Log("Moved to " + String(CLOSED_ANGLE) + " degrees (" + String(closedpulse) + " µs)");
-  delay(10000);
+  int targetPulse = angleToMicros(targetAngle);
 
-  int openpulse = angleToMicros(constrain(OPEN_ANGLE, 0, 180));
-  myServo.writeMicroseconds(openpulse);
-  Log("Moved to " + String(OPEN_ANGLE) + " degrees (" + String(openpulse) + " µs)");
-  delay(10000);
+  Log("Moving servo to " + String(targetAngle) + " degrees...");
 
-  isOpen = true;
-  isMoving = false;
+  if (targetPulse > currentPulse) {
+    // Moving from a smaller pulse to a larger one
+    for (int p = currentPulse; p <= targetPulse; p += STEP_US) {
+      myServo.writeMicroseconds(p);
+      delay(STEP_DELAY);
+    }
+  } else {
+    // Moving from a larger pulse to a smaller one
+    for (int p = currentPulse; p >= targetPulse; p -= STEP_US) {
+      myServo.writeMicroseconds(p);
+      delay(STEP_DELAY);
+    }
+  }
+
+  // Ensure it finishes at the exact target pulse
+  myServo.writeMicroseconds(targetPulse);
+  currentPulse = targetPulse; // IMPORTANT: Update the current position
+
+  Log("Move complete. Position: " + String(currentPulse) + " µs");
+
+  delay(500); // Let the servo settle before detaching
   myServo.detach();
-  Log("PWM detached");
+  isMoving = false;
 }
 
+void RunStartupMovement() {
+  Log("Running servo startup routine...");
+
+  // Assume the door might be open and home it to the closed position
+  currentPulse = angleToMicros(OPEN_ANGLE); 
+  moveServoSmoothly(CLOSED_ANGLE);
+  delay(1000); // Pause for a second
+
+  if (OPEN_ON_RUN) {
+    Log("Moving to startup open position...");
+    moveServoSmoothly(OPEN_ANGLE);
+    isOpen = true;
+  } else {
+    isOpen = false;
+  }
+  Log("Startup routine complete.");
+}
 
 //Converts from Angle to Microseconds
 int angleToMicros(int angle) {
@@ -304,4 +331,7 @@ void loop() {
     digitalWrite(LED_PIN, HIGH);  // OFF
     lastAlive = now;
   }
+
+  delay(1); 
+
 }
