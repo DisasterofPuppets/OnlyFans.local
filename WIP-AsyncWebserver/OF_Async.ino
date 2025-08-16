@@ -32,6 +32,7 @@ int currentPulse; //to Track the servo's last position in µs
 //**************ADJUST THESE SETTINGS FOR YOUR SETUP **************
 
 // -= WIFI SETTINGS =-
+
 const char* ssid = "YOUR_BANK";
 const char* password = "DETAILS_HERE";
 
@@ -46,8 +47,17 @@ constexpr int OPEN_ANGLE = 110; // Angle of the Servo when the door is open, adj
 constexpr bool OPEN_ON_RUN = true; // Have the Servo open the door on power (this won't re-run on manual software reset)
 
 // Tuning values for smooth motion
-#define STEP_US 50          // Microsecond step size for interpolation (Smaller number = smoother motion)
-#define STEP_DELAY 10        // Delay in milliseconds between steps (Larger number = SLOWER motion)
+// How to calculate servo speed:
+// The total time of movement is (Number of Steps) * (Delay per Step).
+//   - Number of Steps = (Total servo travel in µs) / STEP_US.
+//   - Delay per Step = STEP_DELAY in milliseconds.
+//
+// Example calculation for this setup (110 degrees = approx. 1100µs of travel):
+//   - Fast (original): (1100µs / 50µs) * 10ms = 22 steps * 10ms = 220ms (0.22 seconds)
+//   - Slow & Smooth:   (1100µs / 10µs) * 20ms = 110 steps * 20ms = 2200ms (2.2 seconds)
+//
+#define STEP_US 10          // Smaller number = MORE steps = SMOOTHER motion.
+#define STEP_DELAY 20       // Larger number = MORE delay per step = SLOWER motion.
 
 // -= SERVER SETTINGS =-
 
@@ -68,7 +78,7 @@ void setup() {
   
   //clear the log buffer to ensure a clean slate on every boot.
   logBuffer = ""; 
-  
+
   Serial.begin(115200);
   currentPulse = angleToMicros(CLOSED_ANGLE); 
 //reads the system memory states
@@ -111,7 +121,7 @@ if (USE_DNS) {
 
   Log("\nWi-Fi connected!");
   Log("IP address: ");
-  Log(WiFi.localIP().toString()); // Now it's a String
+  Log(WiFi.localIP().toString()); // ✅ Now it's a String
   digitalWrite(LED_PIN, HIGH); // OFF
 
   // mDNS setup
