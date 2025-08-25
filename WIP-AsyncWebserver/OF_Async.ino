@@ -40,11 +40,14 @@ const char* password = "DETAILS_HERE";
 
 #define SERVO_PIN 13           // D7 GPIO13 — safe for servo PWM
 #define LED_PIN LED_BUILTIN    // GPIO2 — onboard blue LED
-constexpr int SERVOMIN = 600;  // Min pulse width in µs. DO NOT modify unless calibrating manually.
-constexpr int SERVOMAX = 2400; // Max pulse width in µs. See GitHub readme for safe tuning instructions.
-constexpr int CLOSED_ANGLE = 0; // Angle of the Servo when door is closed
-constexpr int OPEN_ANGLE = 110; // Angle of the Servo when the door is open, adjust as needed
+
+int SERVOMIN = 600;  // Min pulse width in µs. DO NOT modify unless calibrating manually.
+int SERVOMAX = 2400; // Max pulse width in µs. See GitHub readme for safe tuning instructions.
+int CLOSED_ANGLE = 0; // Angle of the Servo when door is closed
+int OPEN_ANGLE = 110; // Angle of the Servo when the door is open, adjust as needed
 constexpr bool OPEN_ON_RUN = true; // Have the Servo open the door on power (this won't re-run on manual software reset)
+
+bool DIRECTION_REVERSED = true; // switch from true to false if your Open and Closed directions are switched
 
 // Tuning values for smooth motion
 // How to calculate servo speed:
@@ -76,6 +79,15 @@ void setup() {
   //Sanity delay
   delay(1000);
   
+  // Switch servoe direction values if true
+  if (DIRECTION_REVERSED) {
+
+    int TEMP_ANGLE = CLOSED_ANGLE;
+    CLOSED_ANGLE = OPEN_ANGLE;
+    OPEN_ANGLE = TEMP_ANGLE;
+    
+  }
+
   //clear the log buffer to ensure a clean slate on every boot.
   logBuffer = ""; 
 
@@ -283,12 +295,16 @@ void moveServoSmoothly(int targetAngle) {
     for (int p = currentPulse; p <= targetPulse; p += STEP_US) {
       myServo.writeMicroseconds(p);
       delay(STEP_DELAY);
+      server.handleClient(); // keeps web server responsive
+      yield(); // prevents Wifi dropping out due to code blocking.
     }
   } else {
     // Moving from a larger pulse to a smaller one
     for (int p = currentPulse; p >= targetPulse; p -= STEP_US) {
       myServo.writeMicroseconds(p);
       delay(STEP_DELAY);
+      server.handleClient(); 
+      yield(); 
     }
   }
 
