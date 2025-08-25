@@ -321,9 +321,12 @@ void moveServoSmoothly(int targetAngle) {
 
 void RunStartupMovement() {
   Log("Running servo startup routine...");
-
-  // Assume the door might be open and home it to the closed position
-  currentPulse = angleToMicros(OPEN_ANGLE); 
+  
+  // Always assume servo starts at OPEN position (worst-case scenario)
+  currentPulse = angleToMicros(OPEN_ANGLE);
+  Log("Assuming startup position: " + String(OPEN_ANGLE) + " degrees");
+  
+  // Smoothly move to closed position (works regardless of actual servo position)
   moveServoSmoothly(CLOSED_ANGLE);
   delay(1000); // Pause for a second
 
@@ -334,7 +337,8 @@ void RunStartupMovement() {
   } else {
     isOpen = false;
   }
-  Log("Startup routine complete.");
+  
+  Log("Startup routine complete. Final state: " + String(isOpen ? "OPEN" : "CLOSED"));
 }
 
 //Converts from Angle to Microseconds
