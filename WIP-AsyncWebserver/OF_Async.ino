@@ -322,11 +322,16 @@ void moveServoSmoothly(int targetAngle) {
 void RunStartupMovement() {
   Log("Running servo startup routine...");
   
-  // Always assume servo starts at OPEN position (worst-case scenario)
-  currentPulse = angleToMicros(OPEN_ANGLE);
-  Log("Assuming startup position: " + String(OPEN_ANGLE) + " degrees");
+  // Always assume servo starts at OPEN position (worst case scenario)
+  if (DIRECTION_REVERSED) {
+    currentPulse = SERVOMIN;  // Open = 0° when reversed
+    Log("Direction reversed - assuming start at SERVOMIN: " + String(SERVOMIN) + " µs");
+  } else {
+    currentPulse = SERVOMAX;  // Open = 110° when normal
+    Log("Direction normal - assuming start at SERVOMAX: " + String(SERVOMAX) + " µs");
+  }
   
-  // Smoothly move to closed position (works regardless of actual servo position)
+  // Smoothly move to closed position (no direct movement)
   moveServoSmoothly(CLOSED_ANGLE);
   delay(1000); // Pause for a second
 
