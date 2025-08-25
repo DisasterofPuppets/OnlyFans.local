@@ -92,7 +92,7 @@ void setup() {
   logBuffer = ""; 
 
   Serial.begin(115200);
-  currentPulse = angleToMicros(CLOSED_ANGLE); 
+
 //reads the system memory states
   system_rtc_mem_read(RTC_MEM_START, &rtcData, sizeof(rtcData));
   
