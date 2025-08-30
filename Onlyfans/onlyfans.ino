@@ -1,10 +1,19 @@
-/* --------------------------------------------------------------  
+/* --------------------2025 http://DisasterOfPuppets.com ------------------------------------------  
+
 * Window exhaust fan door control
 * This shoddily put together code creates a server on an ESP8266 via Http
 * that communicates with a Servo and toggles it between defined angles
 * Using ESP8266 NodeMCU ESP-12
-* 2025 http://DisasterOfPuppets.com
------------------------------------------------------------------*/
+
+* 
+
+* DISCLAIMER : THIS CODE IS FREE TO BE SHARED FOR PERSONAL USE.
+* I ACCEPT NO LIABILITY FOR ANY DAMAGE DIRECT OR INDIRECTLY CAUSED BY USING THIS CODE.
+* IF YOU DO DUMB, YOU GET DUMB
+* ADDITONAL WARNING!!!!!!!! SET YOUR SERVO AND POTENTIOMETER VALUES BEFORE PHYSICALLY ATTACHING YOUR SERVO TO THE DOOR SHAFT..
+* FAILURE TO DO SO MAY DAMAGE YOUR COMPONENTS, YOU HAVE BEEN WARNED. 
+* DO NOT SET OPEN_ON_RUN TO TRUE BEFORE CONFIG STEPS HAVE BEEN COMPLETED
+---------------------------------------------------------------------------------------------------*/
 
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
@@ -12,46 +21,72 @@
 #include <LittleFS.h>
 #include <Servo.h>
 #include <user_interface.h>
+
+
+//PIN SETTINGS
+#define POT_PIN A0    
+#define SERVO_PIN 13           // D7 GPIO13 — safe for servo PWM
+#define LED_PIN LED_BUILTIN    // GPIO2 — onboard blue LED
+
 #define LOG_BUFFER_SIZE 2048
 
 //Stores the restart and servo open/closed state to memory
 struct RTCData {
   uint32_t magic;
   bool lastWasOpen;
+  bool developerMode;
 };
 
 RTCData rtcData;
 uint32_t RTC_MEM_START = 65;
 
-bool skipStartupMovement = false;
 String logBuffer = "";
 bool isOpen = false;
 bool isMoving = false;
 unsigned long lastAlive = 0;
-int currentPulse; //to Track the servo's last position in µs
+int currentPulse; 
+
 //**************ADJUST THESE SETTINGS FOR YOUR SETUP **************
+
+constexpr bool OPEN_ON_RUN = false; // DON'T SET TO TRUE BEFORE CALIBRATION STEPS 
+//Have the Servo open door on power on (ignored on manual software reset). 
+
+bool developerMode = true; // Developer mode off by default: set to True for more detailed Serial logging
+//this can be toggled in the serial using devOn or DevOff or change the above value
 
 // -= WIFI SETTINGS =-
 
-const char* ssid = "YOUR_BANK";
-const char* password = "DETAILS_HERE";
+const char* ssid = "SLOWKEVIN";
+const char* password = "FUKevin07";
 
-//Potentiometer settings
-#define POT_PIN A0    
-int POT_CLOSED = 1024;         // Values obtained from Onlyfans_Encoder_Calibration
-int POT_OPEN = 650;            // Values obtained from Onlyfans_Encoder_Calibration
-int POSITION_TOLERANCE = 5;   // Allowable pot reading error
+//const char* ssid = "YOUR_BANK";
+//const char* password = "DETAILS_HERE";
+
+// WARNING!!!!!!!! SET YOUR SERVO AND POTENTIOMETER VALUES BEFORE PHYSICALLY ATTACHING YOUR SERVO TO THE DOOR SHAFT..
+// FAILURE TO DO SO MAY DAMAGE YOUR STUFF, YOU HAVE BEEN WARNED.
+
+// CONFIG STEP 1. ****************************** SET SERVO MIN AND MAX VALUES ******************************
+// Obtain these according to your servo specifications, ask Dr Google
+
+int SERVOMIN = 500;  // Min pulse width in µs.
+int SERVOMAX = 2500; // Max pulse width in µs.
 
 
-// -= SERVO SETTINGS =-
-#define SERVO_PIN 13           // D7 GPIO13 — safe for servo PWM
-#define LED_PIN LED_BUILTIN    // GPIO2 — onboard blue LED
-int SERVOMIN = 600;  // Min pulse width in µs. DO NOT modify unless calibrating manually.
-int SERVOMAX = 2400; // Max pulse width in µs. See GitHub readme for safe tuning instructions.
-int CLOSED_ANGLE = 0; // Angle of the Servo when door is closed
-int OPEN_ANGLE = 110; // Angle of the Servo when the door is open, adjust as needed
-constexpr bool OPEN_ON_RUN = true; // Have the Servo open the door on power (this won't re-run on manual software reset)
-bool DIRECTION_REVERSED = true; // switch from true to false if your Open and Closed directions are switched
+// CONFIG STEP 2. ****************************** USE THE TERMINAL TO TEST AND CONFIRM YOUR POTENTIOMETER VALUES WHEN DOOR IS OPEN AND CLOSED ******************************
+// In the terminal, enter r to read the current potentiometer position, enter an angle to test eg a90 sets the servo to 90 Degrees and provides the equivalent reading between 0 - 1024
+// Don't worry if your values seem reversed vs mine, this can happen depending on wiring and which way you face your potentiometer.
+// Update the below with your variables and reupload the code. (do not attach servo to door yet)
+
+int POT_CLOSED = 1024;         // Values obtained from Calibration  1024 maps to 0 for my servo (Closed)
+int POT_OPEN = 690;            // Values obtained from Calibration  690 maps to 160 Degrees for my Servo (Open)
+int POSITION_TOLERANCE = 5;   // Allowable pot reading error (leave this as it or set to 0)
+
+// CONFIG  STEP 3. ****************************** USE THE TERMINAL TO TEST AND CONFIRM YOUR STEP_US AND STEP_DELAY VALUES ******************************
+// YOU SHOULD NOW HAVE SET YOUR SERVOMIN, SERVOMAX, POT_CLOSED, POT_OPEN, AND POSITION_TOLERANCE
+// Make sure you have uploaded the code again with the new values saved.
+// You can set the values for SERVO_US and SERVO_DELAY which are used to slow movement of the servo.
+// if you do not wish to use these values set the below variable to FALSE;
+bool USE_SMOOTHING = true;
 
 // Tuning values for smooth motion with potentiometer feedback
 // Movement time varies based on distance between current and target potentiometer readings.
@@ -64,14 +99,13 @@ bool DIRECTION_REVERSED = true; // switch from true to false if your Open and Cl
 //   - Larger values = SLOWER motion = MORE torque
 //   - Range: 10-50ms (20ms prevents servo stall)
 //
-// Example: Moving 500 pot units with current settings:
+// Example: Moving 500 pot units with below defaul settings: 10 / 20
 //   - Estimated steps: ~110 (varies by servo position)
 //   - Movement time: ~110 steps × 20ms = ~2.2 seconds
 //
-// IMPORTANT: Calibrate POT_CLOSED and POT_OPEN values using calibration sketch first!
 //
-#define STEP_US 10          // Smaller number = MORE steps = SMOOTHER motion.
-#define STEP_DELAY 20       // Larger number = MORE delay per step = SLOWER motion.
+int STEP_US = 10;       // Smaller number = MORE steps = SMOOTHER motion.
+int STEP_DELAY = 20;       // Larger number = MORE delay per step = SLOWER motion.
 
 // -= SERVER SETTINGS =-
 
@@ -80,8 +114,6 @@ IPAddress gateway(192, 168, 1, 1); // Your router's gateway
 IPAddress subnet(255, 255, 255, 0); 
 IPAddress dns(8, 8, 8, 8); // Optional, Google DNS
 constexpr bool USE_DNS = false; // true : On | false : Off
-
-//*****************************************************************
 
 ESP8266WebServer server(80);
 Servo myServo;
@@ -92,60 +124,62 @@ int angleToMicros(int angle) {
 
 void setup() {
   //Sanity delay
-  delay(1000);
+  delay(2000);
   
-  // Switch servo and potentiometer direction values if true
-  if (DIRECTION_REVERSED) {
-
-    int TEMP_ANGLE = CLOSED_ANGLE;
-    CLOSED_ANGLE = OPEN_ANGLE;
-    OPEN_ANGLE = TEMP_ANGLE;
-
-    int TEMP_POT = POT_CLOSED;
-    POT_CLOSED = POT_OPEN;
-    POT_OPEN = TEMP_POT;
-    
-  }
-
   //clear the log buffer to ensure a clean slate on every boot.
   logBuffer = ""; 
 
+
   Serial.begin(115200);
+
+  delay(10);
 
 //reads the system memory states
   system_rtc_mem_read(RTC_MEM_START, &rtcData, sizeof(rtcData));
   
   if (rtcData.magic == 0xCAFEBABE) {
-      skipStartupMovement = true;
       isOpen = rtcData.lastWasOpen;
+      developerMode = rtcData.developerMode; 
+      Log("Developer mode restored: " + String(developerMode ? "ON" : "OFF"));
       Log("User initiated restart. Skipping startup movement.");
       Log("door state restored: " + String(isOpen ? "OPEN" : "CLOSED"));
     
-      if (isOpen) {
-            currentPulse = angleToMicros(OPEN_ANGLE);
-          } else {
-            currentPulse = angleToMicros(CLOSED_ANGLE);
-          }
-          Log("Restored currentPulse to: " + String(currentPulse) + " µs");
+      // NEW - Initialize to safe neutral position
+      currentPulse = (SERVOMIN + SERVOMAX) / 2;  // 1500µs - servo neutral
+      DevLog("Restored currentPulse to neutral: " + String(currentPulse) + " µs");
 
       rtcData.magic = 0;
       system_rtc_mem_write(RTC_MEM_START, &rtcData, sizeof(rtcData));
   } else {
-      // Only initialize currentPulse if no RTC restore
-      currentPulse = analogRead(POT_PIN) > ((POT_CLOSED + POT_OPEN) / 2) ? 
-                    angleToMicros(OPEN_ANGLE) : angleToMicros(CLOSED_ANGLE);
-      Log("Initialized currentPulse to: " + String(currentPulse) + " µs");
+      // NEW - Initialize to safe neutral position
+      currentPulse = (SERVOMIN + SERVOMAX) / 2;  // 1500µs - servo neutral  
+      DevLog("Initialized currentPulse to neutral: " + String(currentPulse) + " µs");
   }
+
+// get door position based on current potentiometer reading
+  int bootPot = analogRead(POT_PIN);
+  Log("Boot pot reading: " + String(bootPot));
+  if (abs(bootPot - POT_CLOSED) <= POSITION_TOLERANCE) {
+    isOpen = false;
+    Log("Boot state: CLOSED (based on pot reading)");
+  } else if (abs(bootPot - POT_OPEN) <= POSITION_TOLERANCE) {
+    isOpen = true;
+    Log("Boot state: OPEN (based on pot reading)");
+  } else {
+    isOpen = false; // Default to closed if unclear
+    Log("Boot state: UNKNOWN - defaulting to CLOSED");
+  }
+
 
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, HIGH); // OFF (active LOW)
 
 
-if (USE_DNS) {
-  WiFi.config(local_IP, gateway, subnet, dns);
-} else {
-  WiFi.config(local_IP, gateway, subnet);
-}
+  if (USE_DNS) {
+    WiFi.config(local_IP, gateway, subnet, dns);
+  } else {
+    WiFi.config(local_IP, gateway, subnet);
+  }
   
   WiFi.begin(ssid, password);
   Serial.print("Connecting to Wi-Fi");
@@ -182,8 +216,7 @@ if (USE_DNS) {
   // Confirm required files exist ///Just change this to the files you know are required for functionality
   if (!LittleFS.exists("/index.html")) Log("❌ Missing: index.html");
 
-
-  // File routes // Don't forget to list any additional files you put in the data folder here.
+  // File routes for server files // Don't forget to list any additional files you wish put in the data folder.
   server.on("/", handleRoot);
   server.serveStatic("/index.html", LittleFS, "/index.html");
   server.serveStatic("/favicon-32x32.png", LittleFS, "/favicon-32x32.png");
@@ -192,7 +225,6 @@ if (USE_DNS) {
   server.serveStatic("/site.webmanifest", LittleFS, "/site.webmanifest");
   server.serveStatic("/android-chrome-512x512.png", LittleFS, "/android-chrome-512x512.png");
   server.serveStatic("/android-chrome-192x192.png", LittleFS, "/android-chrome-192x192.png");  
-
 
   // Action routes
   server.on("/door-status", []() {
@@ -219,24 +251,149 @@ if (USE_DNS) {
   server.begin();
   Log("HTTP server started");
 
-  // Startup movement only runs if the server is not hard reset
-  if (!skipStartupMovement) {
-      if (OPEN_ON_RUN == true) { // Check the user defined option
-        RunStartupMovement();
-    }
-  } else {
-    Log("User initiated server restart");  
-  }
+  RunStartupMovement();
+
   Log("Door state at startup: " + String(isOpen ? "OPEN" : "CLOSED"));
+
+// Commands for the serial (calibration)
+
+  server.on("/command", []() {
+    String cmd = server.arg("cmd");
+    cmd.trim();
+
+// a Action
+    if (cmd.startsWith("a")) {
+      int angle = cmd.substring(1).toInt();
+      if (angle >= 0 && angle <= 180) {
+        Log("> " + cmd);
+        server.send(200, "text/plain", "OK");
+        int targetPot = map(angle, 0, 180, POT_CLOSED, POT_OPEN);
+        if (USE_SMOOTHING) {
+          moveServoToPotPosition(targetPot); 
+        }
+        else {
+          moveServoToPotPositionDirect(targetPot);
+        }
+
+        int potValue = analogRead(POT_PIN);
+        Log("Pot reading: " + String(potValue));
+        return;
+      } else {
+        Log("> " + cmd);
+        Log("Error: Angle must be 0-180");
+      }
+    }
+
+// r Action (read values)
+    else if (cmd == "r") {
+      int currentPot = analogRead(POT_PIN);
+      int mappedAngle = map(currentPot, POT_CLOSED, POT_OPEN, 0, 180);
+      mappedAngle = constrain(mappedAngle, 0, 180);
+      Log("> " + cmd);
+      Log("Current pot: " + String(currentPot));
+      Log("Equivalent angle: " + String(mappedAngle) + "°");
+    
+      if (!USE_SMOOTHING) {
+        Log("USE_SMOOTHING is False - servo moves at normal rate");
+      } 
+      else {
+        Log("STEP_US: " + String(STEP_US));
+        Log("STEP_DELAY: " + String(STEP_DELAY));
+      }
+        
+    }
+
+
+// devOn Action
+    else if (cmd == "devOn") {
+      developerMode = true;
+      Log("> " + cmd);
+      Log("Developer mode enabled - verbose logging active");
+    }
+
+// devOff Action
+    else if (cmd == "devOff") {
+      developerMode = false;
+      Log("> " + cmd);
+      Log("Developer mode disabled - basic logging only");
+    }
+
+// h Action (help menu)
+    else if (cmd == "h") {
+      Log("> " + cmd);
+      instructions();
+    }
+
+//i Action (STEP_US and STEP_DELAY Instructions)
+    else if (cmd == "i") {
+      stepinstructions();     
+    }
+
+
+// s Action (STEP_US value)
+    else if (cmd.startsWith("s")) {
+      int value = cmd.substring(1).toInt();
+      if (value >= 5 && value <= 20) {
+        Log("> " + cmd);
+        server.send(200, "text/plain", "OK");
+        STEP_US = value;
+        Log("New STEP_US value set to " + String(STEP_US));
+        return;
+      } 
+      else {
+        Log("> " + cmd);
+        Log("Error: Value must be between 5-20");
+      }     
+    }
+
+// d Action (STEP_DELAY value)
+    else if (cmd.startsWith("d")) {
+      int value = cmd.substring(1).toInt();
+      if (value >= 10 && value <= 50) {
+        Log("> " + cmd);
+        server.send(200, "text/plain", "OK");
+        STEP_DELAY = value;
+        Log("New STEP_DELAY value set to " + String(STEP_DELAY));
+        return;
+      } 
+      else {
+        Log("> " + cmd);
+        Log("Error: Value must be between 10-50");
+      }     
+    }    
+
+// cls Action (clear log)
+    else if (cmd == "cls") {
+      logBuffer = "";
+      Log("> " + cmd);
+      Log("Log cleared");
+    }
+//other command catch
+    else {
+      Log("> " + cmd);
+      Log("Unknown command. Type 'h' for help.");
+    }
+    
+    server.send(200, "text/plain", "OK");
+  });
 }
+//********************************* SETUP END *********************************************
 
-//******************FUNCTIONS **********************
+//****************** FUNCTIONS **********************
 
+// Always shows (WiFi, door status, errors)
 void Log(const String& msg) {
-  Serial.println(msg); // still prints over USB if connected
+  Serial.println(msg); 
   logBuffer += msg + "\n";
   if (logBuffer.length() > LOG_BUFFER_SIZE) {
-    logBuffer = logBuffer.substring(logBuffer.length() - LOG_BUFFER_SIZE); // trim oldest
+    logBuffer = logBuffer.substring(logBuffer.length() - LOG_BUFFER_SIZE);
+  }
+}
+
+// Only shows in developer mode (verbose debugging)
+void DevLog(const String& msg) {
+  if (developerMode) {
+    Log(msg);
   }
 }
 
@@ -262,6 +419,57 @@ void CheckWiFi() {
   }
 }
 
+void stepinstructions(){
+
+  Log("Tuning values for smooth motion with potentiometer feedback");
+  Log("Movement time varies based on distance between current and target potentiometer readings.");
+  Log(""); 
+  Log("STEP_US: Microsecond step size for servo pulse width");
+  Log("- Smaller values = MORE steps = SMOOTHER motion");
+  Log("- Range: 5-20µs (10µs is good balance)");
+  Log("");
+  Log("STEP_DELAY: Delay between each step in milliseconds  ");
+  Log("- Larger values = SLOWER motion = MORE torque");
+  Log("- Range: 10-50ms (20ms prevents servo stall)");
+  Log("");
+  Log("Example: Moving 500 pot units with below defaul settings: 10 / 20");
+  Log("- Estimated steps: ~110 (varies by servo position)");
+  Log("- Movement time: ~110 steps × 20ms = ~2.2 seconds");
+  Log("");
+}
+
+// Calibration instructions
+void instructions (){
+
+  Log("");
+  Log("*************************************");
+  Log("***   OnlyFans Exhaust Fan Help   ***");
+  Log("*************************************");
+  Log("");
+  Log(" Command             Function");
+  Log("=========           ==========");
+  Log("");
+  Log("h                    Show this help menu");
+  Log("cls                  Clears the Log");
+  Log("a<angle>             Move servo to angle (0-180) e.g a90");
+  Log("r                    Displays current potentiometer, STEP_US and STEP_DELAY, values");
+  Log("s<value>             Set a new STEP_US value");
+  Log("d<value>             Set a new STEP_DELAY value");
+  Log("i                    Displays the STEP_US / STEP_DELAY help");
+  Log("");
+  Log("====== Servo / Pot Calibration ======");
+  Log("1. Move angle to closed position using a<angle> note pot value");
+  Log("2. Move to open position and note pot value");
+  Log("Enter these new values in your code and re-upload");
+  Log("4. OPTIONAL Slow the servo movement (USE_SMOOTHING must be set to true)");
+  Log("");
+  Log("Change the STEP_US value by entering s<number> between 5 and 20");
+  Log("Change the STEP_DELAY value by entering d<number> between 10 - 50");
+  Log("Make sure to update the STEP values in your main code and re-upload.");
+  Log("-------------------------------------");
+  Log("");
+}
+
 // Routes
 void handleRoot() {
   IPAddress clientIP = server.client().remoteIP();
@@ -283,9 +491,14 @@ void handleOpen() {
     server.send(200, "text/plain", "Door already open.");
     return;
   }
-  moveServoSmoothly(OPEN_ANGLE);
+  server.send(200, "text/plain", "Door Opening...");
+          if (USE_SMOOTHING) {
+          moveServoToPotPosition(POT_OPEN); 
+        }
+        else {
+          moveServoToPotPositionDirect(POT_OPEN);
+        }
   isOpen = true;
-  server.send(200, "text/plain", "Door Open.");
 }
 
 void handleClose() {
@@ -295,9 +508,14 @@ void handleClose() {
     server.send(200, "text/plain", "Door already closed.");
     return;
   }
-  moveServoSmoothly(CLOSED_ANGLE);
+  server.send(200, "text/plain", "Door Closing...");
+          if (USE_SMOOTHING) {
+          moveServoToPotPosition(POT_CLOSED); 
+        }
+        else {
+          moveServoToPotPositionDirect(POT_CLOSED);
+        }
   isOpen = false;
-  server.send(200, "text/plain", "Door Closed.");
 }
 
 void handleRestart() {
@@ -305,93 +523,226 @@ void handleRestart() {
 
   rtcData.magic = 0xCAFEBABE;
   rtcData.lastWasOpen = isOpen; // ← Track actual door state
+  rtcData.developerMode = developerMode;
   system_rtc_mem_write(RTC_MEM_START, &rtcData, sizeof(rtcData));
 
   server.send(200, "text/plain", "Restarting ESP...");
+  Log("Restarting...Please wait.......");
   delay(500);
   ESP.restart();
 }
 
-void moveServoSmoothly(int targetAngle) {
-  int targetPotPos = map(targetAngle, CLOSED_ANGLE, OPEN_ANGLE, POT_CLOSED, POT_OPEN);
-  int currentPotPos = analogRead(POT_PIN);
+
+// Used when USE_SMOOTHING is True
+void moveServoToPotPosition(int targetPotPos) {
+  Log("Yep this is me moving the servo to: " + String(targetPotPos));
   
-  if (abs(currentPotPos - targetPotPos) <= POSITION_TOLERANCE) {
-    Log("Already at target position (pot: " + String(currentPotPos) + ")");
+  // Calculate the equivalent angle for logging
+  int mappedAngle = map(targetPotPos, POT_CLOSED, POT_OPEN, 0, 180);
+  mappedAngle = constrain(mappedAngle, 0, 180);
+  Log("Equivalent angle: " + String(mappedAngle) + "°");
+
+  // Read current physical potentiometer position
+  int currentPotReading = analogRead(POT_PIN);
+
+  // Check if the door is already near the target position to avoid unnecessary movement
+  if (abs(currentPotReading - targetPotPos) <= POSITION_TOLERANCE) {
+    Log("Door already near target pot position: " + String(currentPotReading));
+    // Ensure isOpen flag is updated if movement was skipped but state might have changed
+    if (abs(currentPotReading - POT_OPEN) <= POSITION_TOLERANCE) {
+        isOpen = true;
+    } else if (abs(currentPotReading - POT_CLOSED) <= POSITION_TOLERANCE) {
+        isOpen = false;
+    }
     return;
   }
-  
+
   myServo.attach(SERVO_PIN);
-  isMoving = true;
-  
-  Log("Moving to " + String(targetAngle) + "° (pot target: " + String(targetPotPos) + ")");
-  
-  unsigned long moveStart = millis();
-  int lastPotReading = currentPotPos;
-  unsigned long lastMovement = millis();
-  
-  while (abs(analogRead(POT_PIN) - targetPotPos) > POSITION_TOLERANCE) {
-    currentPotPos = analogRead(POT_PIN);
+  isMoving = true; // Indicate that the servo is in motion
+  DevLog("Servo attached to pin " + String(SERVO_PIN));
+
+  // Calculate target pulse width from target potentiometer position
+  // Your calibration: POT_CLOSED (1024) maps to 0 degrees (SERVOMIN), POT_OPEN (690) maps to 160 degrees (SERVOMAX)
+  int targetPulse = map(targetPotPos, POT_CLOSED, POT_OPEN, SERVOMIN, SERVOMAX);
+  targetPulse = constrain(targetPulse, SERVOMIN, SERVOMAX); // Ensure target pulse is within defined limits
+  DevLog("Target pulse: " + String(targetPulse) + " µs (from target pot: " + String(targetPotPos) + ")");
+  DevLog("Starting currentPulse: " + String(currentPulse) + " µs");
+
+  unsigned long moveStart = millis(); // Timestamp for overall movement timeout
+  int lastPotReadingForStall = currentPotReading; // Keep track of pot reading for stall detection
+  unsigned long lastMovementActivity = millis(); // Timestamp for last significant pot change
+
+  // Move servo incrementally towards the target pulse width
+  // The loop continues until the commanded currentPulse is very close to the targetPulse
+  while (abs(currentPulse - targetPulse) > (STEP_US / 2)) {
+    // Determine the direction to adjust the servo's commanded pulse width (currentPulse)
+    if (currentPulse < targetPulse) {
+      currentPulse += STEP_US;
+      if (currentPulse > targetPulse) currentPulse = targetPulse; // Prevent overshoot
+    } else if (currentPulse > targetPulse) {
+      currentPulse -= STEP_US;
+      if (currentPulse < targetPulse) currentPulse = targetPulse; // Prevent overshoot
+    }
+
+    currentPulse = constrain(currentPulse, SERVOMIN, SERVOMAX); // Keep pulse within servo's operational limits
+    myServo.writeMicroseconds(currentPulse); // Send the updated pulse command to the servo
     
-    if (currentPotPos < targetPotPos) {
-      currentPulse = min(currentPulse + STEP_US, angleToMicros(OPEN_ANGLE));
-    } else {
-      currentPulse = max(currentPulse - STEP_US, angleToMicros(CLOSED_ANGLE));
+    delay(STEP_DELAY); // Pause for a short duration to smooth the movement
+    server.handleClient(); // Allow the web server to process requests during movement
+    yield(); // Allow ESP8266 background tasks to run
+
+    // Update current physical pot reading for stall detection
+    currentPotReading = analogRead(POT_PIN); 
+    
+    // Stall detection: check if the potentiometer reading has changed significantly
+    if (abs(currentPotReading - lastPotReadingForStall) > POSITION_TOLERANCE) {
+        lastPotReadingForStall = currentPotReading;
+        lastMovementActivity = millis(); // Reset activity timer if movement detected
     }
     
-    myServo.writeMicroseconds(currentPulse);
-    delay(STEP_DELAY);
-    server.handleClient();
-    yield();
-    
-    // Check if pot moved (door is actually moving)
-    if (abs(currentPotPos - lastPotReading) > 3) {
-      lastPotReading = currentPotPos;
-      lastMovement = millis();
+    // If no significant physical movement has occurred for a while, assume a stall
+    if (millis() - lastMovementActivity > 3000) { // 3 seconds of no pot change
+        DevLog("Movement stalled. Current pot: " + String(currentPotReading));
+        break; // Exit loop
     }
-    
-    // Stall detection
-    if (millis() - lastMovement > 3000) {
-      Log("Movement stalled at pot: " + String(currentPotPos));
-      break;
-    }
-    
-    // Overall timeout
-    if (millis() - moveStart > 15000) {
-      Log("Movement timeout");
-      break;
+
+    // Overall movement timeout to prevent endless loops
+    if (millis() - moveStart > 10000) { // 10-second timeout
+        Log("Movement timed out after " + String(millis() - moveStart) + "ms. Current pot: " + String(currentPotReading));
+        break; // Exit loop
     }
   }
   
-  myServo.detach();
-  isMoving = false;
-  Log("Final pot reading: " + String(analogRead(POT_PIN)));
+  // After the loop, ensure the servo is sent the exact final target pulse command
+  myServo.writeMicroseconds(targetPulse);
+  currentPulse = targetPulse; // Update global currentPulse to reflect the final commanded position
+  DevLog("Final servo pulse command: " + String(currentPulse) + " µs");
+
+  delay(200); // Small delay to allow the servo to physically settle at its final position
+
+  myServo.detach(); // Detach the servo to save power and prevent jitter/buzzing
+  isMoving = false; // Indicate that the servo has stopped moving
+  DevLog("Servo detached.");
+
+  // Final check of the physical door state based on potentiometer reading
+  currentPotReading = analogRead(POT_PIN);
+  if (abs(currentPotReading - POT_OPEN) <= POSITION_TOLERANCE) {
+    isOpen = true;
+    Log("Door successfully moved to OPEN (pot: " + String(currentPotReading) + ")");
+  } else if (abs(currentPotReading - POT_CLOSED) <= POSITION_TOLERANCE) {
+    isOpen = false;
+    Log("Door successfully moved to CLOSED (pot: " + String(currentPotReading) + ")");
+  } else {
+    Log("Door moved to intermediate or unexpected position (pot: " + String(currentPotReading) + ")");
+  }
 }
 
 void RunStartupMovement() {
   Log("Running servo startup routine with potentiometer feedback...");
   
-  // Read current position
+  // Step 1: Read actual door position
   int currentPot = analogRead(POT_PIN);
   Log("Current pot reading: " + String(currentPot));
   
-  // Move to closed position first
-  moveServoSmoothly(CLOSED_ANGLE);
-  isOpen = false;
-  delay(1000);
+  // Step 2: Sync servo to current physical position (the "hack")
+  myServo.attach(SERVO_PIN);
+  currentPulse = map(currentPot, POT_CLOSED, POT_OPEN, SERVOMIN, SERVOMAX);
+  currentPulse = constrain(currentPulse, SERVOMIN, SERVOMAX);
+  myServo.writeMicroseconds(currentPulse);
+  DevLog("Synced servo to current position: " + String(currentPulse) + " µs");
+  delay(500); // Let servo settle
+  myServo.detach();
   
-  // Optional: move to open if configured
   if (OPEN_ON_RUN) {
     Log("OPEN_ON_RUN is true. Moving to open position...");
-    moveServoSmoothly(OPEN_ANGLE);
+    if (USE_SMOOTHING) {
+      moveServoToPotPosition(POT_OPEN); 
+    }
+    else {
+      moveServoToPotPositionDirect(POT_OPEN);
+    }
+    delay(1000);
     isOpen = true;
-  } else {
-    Log("OPEN_ON_RUN is false. Door remains closed.");
   }
-  
+  else {
+    Log("OPEN_ON_RUN is false. Door returning to closed.");
+    if (USE_SMOOTHING) {
+      moveServoToPotPosition(POT_CLOSED); 
+    }
+    else {
+      moveServoToPotPositionDirect(POT_CLOSED);
+    }
+    delay(1000);
+    isOpen = false;
+  }    
   Log("Startup routine complete. Final state: " + String(isOpen ? "OPEN" : "CLOSED"));
 }
 
+// Used when USE_SMOOTHING is false
+void moveServoToPotPositionDirect(int targetPotPos) {
+  Log("Moving servo directly to: " + String(targetPotPos));
+  
+  // Calculate the equivalent angle for logging
+  int mappedAngle = map(targetPotPos, POT_CLOSED, POT_OPEN, 0, 180);
+  mappedAngle = constrain(mappedAngle, 0, 180);
+  Log("Equivalent angle: " + String(mappedAngle) + "°");
+
+  // Read current physical potentiometer position
+  int currentPotReading = analogRead(POT_PIN);
+
+  // Check if already at target
+  if (abs(currentPotReading - targetPotPos) <= POSITION_TOLERANCE) {
+    Log("Door already at target position: " + String(currentPotReading));
+    if (abs(currentPotReading - POT_OPEN) <= POSITION_TOLERANCE) {
+        isOpen = true;
+    } else if (abs(currentPotReading - POT_CLOSED) <= POSITION_TOLERANCE) {
+        isOpen = false;
+    }
+    return;
+  }
+
+  myServo.attach(SERVO_PIN);
+  isMoving = true;
+  DevLog("Servo attached to pin " + String(SERVO_PIN));
+
+  // Calculate target pulse and move directly
+  int targetPulse = map(targetPotPos, POT_CLOSED, POT_OPEN, SERVOMIN, SERVOMAX);
+  targetPulse = constrain(targetPulse, SERVOMIN, SERVOMAX);
+  
+  DevLog("Moving directly to pulse: " + String(targetPulse) + " µs");
+  myServo.writeMicroseconds(targetPulse);
+  currentPulse = targetPulse;
+
+  // Wait for movement completion with timeout
+  unsigned long moveStart = millis();
+  while (millis() - moveStart < 5000) { // 5 second timeout
+    server.handleClient();
+    yield();
+    delay(100);
+    
+    currentPotReading = analogRead(POT_PIN);
+    if (abs(currentPotReading - targetPotPos) <= POSITION_TOLERANCE) {
+      break; // Reached target
+    }
+  }
+
+  delay(200); // Let servo settle
+  myServo.detach();
+  isMoving = false;
+  DevLog("Servo detached.");
+
+  // Final position check
+  currentPotReading = analogRead(POT_PIN);
+  if (abs(currentPotReading - POT_OPEN) <= POSITION_TOLERANCE) {
+    isOpen = true;
+    Log("Door moved to OPEN (pot: " + String(currentPotReading) + ")");
+  } else if (abs(currentPotReading - POT_CLOSED) <= POSITION_TOLERANCE) {
+    isOpen = false;
+    Log("Door moved to CLOSED (pot: " + String(currentPotReading) + ")");
+  } else {
+    Log("Door at position (pot: " + String(currentPotReading) + ")");
+  }
+}
 
 
 void loop() {
