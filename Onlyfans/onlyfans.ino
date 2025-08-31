@@ -56,11 +56,8 @@ bool developerMode = true; // Developer mode off by default: set to True for mor
 
 // -= WIFI SETTINGS =-
 
-const char* ssid = "SLOWKEVIN";
-const char* password = "FUKevin07";
-
-//const char* ssid = "YOUR_BANK";
-//const char* password = "DETAILS_HERE";
+const char* ssid = "YOUR_BANK";
+const char* password = "DETAILS_HERE";
 
 // WARNING!!!!!!!! SET YOUR SERVO AND POTENTIOMETER VALUES BEFORE PHYSICALLY ATTACHING YOUR SERVO TO THE DOOR SHAFT..
 // FAILURE TO DO SO MAY DAMAGE YOUR STUFF, YOU HAVE BEEN WARNED.
